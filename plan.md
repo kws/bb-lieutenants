@@ -47,6 +47,46 @@ These replace or refine assumptions in the original plan below:
 
 Before building a map authoring tool, define the terrain model that tool will author. The map should describe physical terrain facts, not every possible vehicle class.
 
+### Terrain Modeling Correction
+
+Do not model terrain as object-like patches placed on top of a flat world. That approach treats hills, ridges, dikes, ramps, and cliffs like blockers or decals, and it breaks down immediately for normal game terrain.
+
+Terrain is the ground. The world should no longer be assumed flat with special terrain objects layered over it. Elevation must come from the ground model itself: a heightfield, terrain mesh, tile-corner heights, or another continuous surface representation that can express slopes, ridges, plateaus, dikes, and cliff edges as part of the walkable surface.
+
+Future terrain work should start from these rules:
+
+```text
+The ground owns elevation.
+Terrain samples come from the ground surface, not from placed objects.
+Slopes and cliffs are derived from neighboring ground heights.
+Surface type and water depth annotate the ground.
+Buildings, trees, rocks, walls, and props remain placed objects with footprints/colliders.
+```
+
+The failed patch-based direction should not be extended with more special patch shapes, such as ramp, wedge, ridge, mound, or cliff objects. A dike-like test should instead be authored as ground elevation: one side has a gentle slope, the crest has height, and the far edge drops faster than the vehicle profile permits.
+
+Restart terrain from a shared ground source:
+
+```text
+TerrainField/TerrainGround is the authoritative source for elevation.
+The renderer builds the ground mesh from that source.
+Pathfinding samples the same source for cell heights and edge slopes.
+Physics/collision is aligned to the same source, or explicitly documented as simplified until terrain physics exists.
+Surface, road, water, and overlay data are annotation layers on the ground, not height-producing objects.
+Placed assets stay separate: buildings, vegetation, rocks, walls, props, and their blockers/colliders.
+```
+
+Prefer a minimal heightfield or tile-corner-height schema before any editor work:
+
+```text
+terrain.elevation: grid or heightmap-backed samples
+terrain.surface: per-cell surface/material data
+terrain.water: per-cell depth data
+terrain.overlays: roads, bridges, fords, ramps as annotations
+```
+
+The next proof should be a single authored ground profile, not a new patch type: flat approach, gentle slope up, short crest, steep drop. A wheeled profile should drive up the gentle side, slow while climbing, and reject the cliff edge because the derived edge slope/drop exceeds its limits.
+
 Map-authored terrain facts should include:
 
 ```text
