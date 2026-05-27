@@ -1,0 +1,79 @@
+{
+  "version": 1,
+  "name": "poc-industrial-road-yard",
+  "size": { "cellsX": 64, "cellsZ": 64, "cellSize": 2 },
+  "terrain": { "base": "grass", "heightMode": "flat", "defaultCost": 3 },
+  "playerStarts": [
+    { "id": "player-1-start", "position": { "x": -48, "y": 0, "z": 36 }, "rotationY": 1.5708 }
+  ],
+  "placements": [
+    { "id": "road-west-01", "assetId": "road.straight", "position": { "x": -48, "y": 0.03, "z": 32 }, "rotationY": 1.5708, "scale": 1 },
+    { "id": "road-west-02", "assetId": "road.straight", "position": { "x": -40, "y": 0.03, "z": 32 }, "rotationY": 1.5708, "scale": 1 },
+    { "id": "road-west-03", "assetId": "road.straight", "position": { "x": -32, "y": 0.03, "z": 32 }, "rotationY": 1.5708, "scale": 1 },
+    { "id": "road-west-04", "assetId": "road.straight", "position": { "x": -24, "y": 0.03, "z": 32 }, "rotationY": 1.5708, "scale": 1 },
+    { "id": "road-cross-01", "assetId": "road.crossroad", "position": { "x": -16, "y": 0.03, "z": 32 }, "rotationY": 0, "scale": 1 },
+    { "id": "road-east-01", "assetId": "road.straight", "position": { "x": -8, "y": 0.03, "z": 32 }, "rotationY": 1.5708, "scale": 1 },
+    { "id": "road-east-02", "assetId": "road.straight", "position": { "x": 0, "y": 0.03, "z": 32 }, "rotationY": 1.5708, "scale": 1 },
+    { "id": "road-east-03", "assetId": "road.straight", "position": { "x": 8, "y": 0.03, "z": 32 }, "rotationY": 1.5708, "scale": 1 },
+    { "id": "road-east-04", "assetId": "road.straight", "position": { "x": 16, "y": 0.03, "z": 32 }, "rotationY": 1.5708, "scale": 1 },
+    { "id": "road-east-05", "assetId": "road.straight", "position": { "x": 24, "y": 0.03, "z": 32 }, "rotationY": 1.5708, "scale": 1 },
+    { "id": "road-east-06", "assetId": "road.straight", "position": { "x": 32, "y": 0.03, "z": 32 }, "rotationY": 1.5708, "scale": 1 },
+    { "id": "road-east-07", "assetId": "road.straight", "position": { "x": 40, "y": 0.03, "z": 32 }, "rotationY": 1.5708, "scale": 1 },
+    { "id": "road-east-08", "assetId": "road.end", "position": { "x": 48, "y": 0.03, "z": 32 }, "rotationY": 4.7124, "scale": 1 },
+
+    { "id": "road-north-01", "assetId": "road.straight", "position": { "x": -16, "y": 0.03, "z": 24 }, "rotationY": 0, "scale": 1 },
+    { "id": "road-north-02", "assetId": "road.straight", "position": { "x": -16, "y": 0.03, "z": 16 }, "rotationY": 0, "scale": 1 },
+    { "id": "road-north-03", "assetId": "road.straight", "position": { "x": -16, "y": 0.03, "z": 8 }, "rotationY": 0, "scale": 1 },
+    { "id": "road-mid-01", "assetId": "road.intersection", "position": { "x": -16, "y": 0.03, "z": 0 }, "rotationY": 0, "scale": 1 },
+    { "id": "road-south-01", "assetId": "road.straight", "position": { "x": -16, "y": 0.03, "z": -8 }, "rotationY": 0, "scale": 1 },
+    { "id": "road-south-02", "assetId": "road.straight", "position": { "x": -16, "y": 0.03, "z": -16 }, "rotationY": 0, "scale": 1 },
+    { "id": "road-south-03", "assetId": "road.straight", "position": { "x": -16, "y": 0.03, "z": -24 }, "rotationY": 0, "scale": 1 },
+    { "id": "road-south-04", "assetId": "road.end", "position": { "x": -16, "y": 0.03, "z": -32 }, "rotationY": 0, "scale": 1 },
+
+    { "id": "road-yard-01", "assetId": "road.straight", "position": { "x": -8, "y": 0.03, "z": 0 }, "rotationY": 1.5708, "scale": 1 },
+    { "id": "road-yard-02", "assetId": "road.straight", "position": { "x": 0, "y": 0.03, "z": 0 }, "rotationY": 1.5708, "scale": 1 },
+    { "id": "road-yard-03", "assetId": "road.straight", "position": { "x": 8, "y": 0.03, "z": 0 }, "rotationY": 1.5708, "scale": 1 },
+    { "id": "road-yard-04", "assetId": "road.bend", "position": { "x": 16, "y": 0.03, "z": 0 }, "rotationY": 1.5708, "scale": 1 },
+    { "id": "road-yard-05", "assetId": "road.straight", "position": { "x": 16, "y": 0.03, "z": -8 }, "rotationY": 0, "scale": 1 },
+    { "id": "road-yard-06", "assetId": "road.end", "position": { "x": 16, "y": 0.03, "z": -16 }, "rotationY": 0, "scale": 1 },
+
+    { "id": "factory-main", "assetId": "building.industrial.a", "position": { "x": 10, "y": 0, "z": 17 }, "rotationY": 0, "scale": 1, "nav": { "blocks": true, "shape": "rect", "width": 14, "depth": 12, "padding": 1.2 }, "physics": { "solid": true, "shape": "box", "size": { "x": 14, "y": 8, "z": 12 } } },
+    { "id": "warehouse-west", "assetId": "building.industrial.b", "position": { "x": -39, "y": 0, "z": 12 }, "rotationY": 0, "scale": 1, "nav": { "blocks": true, "shape": "rect", "width": 13, "depth": 11, "padding": 1 }, "physics": { "solid": true, "shape": "box", "size": { "x": 13, "y": 7, "z": 11 } } },
+    { "id": "workshop-east", "assetId": "building.industrial.c", "position": { "x": 34, "y": 0, "z": 6 }, "rotationY": 0, "scale": 1, "nav": { "blocks": true, "shape": "rect", "width": 10, "depth": 10, "padding": 1 }, "physics": { "solid": true, "shape": "box", "size": { "x": 10, "y": 7, "z": 10 } } },
+    { "id": "utility-south", "assetId": "building.industrial.d", "position": { "x": -36, "y": 0, "z": -24 }, "rotationY": 0, "scale": 1, "nav": { "blocks": true, "shape": "rect", "width": 10, "depth": 8, "padding": 1 }, "physics": { "solid": true, "shape": "box", "size": { "x": 10, "y": 6, "z": 8 } } },
+
+    { "id": "barrier-pocket-01", "assetId": "prop.barrier", "position": { "x": 26, "y": 0, "z": -18 }, "rotationY": 0, "scale": 1 },
+    { "id": "barrier-pocket-02", "assetId": "prop.barrier", "position": { "x": 30, "y": 0, "z": -18 }, "rotationY": 0, "scale": 1 },
+    { "id": "barrier-pocket-03", "assetId": "prop.barrier", "position": { "x": 34, "y": 0, "z": -18 }, "rotationY": 0, "scale": 1 },
+    { "id": "barrier-pocket-04", "assetId": "prop.barrier", "position": { "x": 26, "y": 0, "z": -26 }, "rotationY": 0, "scale": 1 },
+    { "id": "barrier-pocket-05", "assetId": "prop.barrier", "position": { "x": 30, "y": 0, "z": -26 }, "rotationY": 0, "scale": 1 },
+    { "id": "barrier-pocket-06", "assetId": "prop.barrier", "position": { "x": 34, "y": 0, "z": -26 }, "rotationY": 0, "scale": 1 },
+    { "id": "barrier-pocket-07", "assetId": "prop.barrier", "position": { "x": 24, "y": 0, "z": -22 }, "rotationY": 1.5708, "scale": 1, "nav": { "blocks": true, "shape": "rect", "width": 0.8, "depth": 8, "padding": 0.2 }, "physics": { "solid": true, "shape": "box", "size": { "x": 0.8, "y": 2, "z": 8 } } },
+    { "id": "barrier-pocket-08", "assetId": "prop.barrier", "position": { "x": 36, "y": 0, "z": -22 }, "rotationY": 1.5708, "scale": 1, "nav": { "blocks": true, "shape": "rect", "width": 0.8, "depth": 8, "padding": 0.2 }, "physics": { "solid": true, "shape": "box", "size": { "x": 0.8, "y": 2, "z": 8 } } },
+
+    { "id": "tree-01", "assetId": "nature.tree.oak", "position": { "x": -4, "y": 0, "z": -21 }, "rotationY": 0.4, "scale": 1 },
+    { "id": "tree-02", "assetId": "nature.tree.default", "position": { "x": 0, "y": 0, "z": -24 }, "rotationY": 0.1, "scale": 1 },
+    { "id": "tree-03", "assetId": "nature.tree.oak", "position": { "x": 4, "y": 0, "z": -21 }, "rotationY": 1.1, "scale": 1 },
+    { "id": "tree-04", "assetId": "nature.tree.default", "position": { "x": 0, "y": 0, "z": -17 }, "rotationY": 0.7, "scale": 1 },
+    { "id": "rock-01", "assetId": "nature.rock.large", "position": { "x": 5, "y": 0, "z": -27 }, "rotationY": 0.5, "scale": 1 },
+    { "id": "rock-02", "assetId": "nature.stone.large", "position": { "x": -6, "y": 0, "z": -27 }, "rotationY": 0.9, "scale": 1 },
+    { "id": "box-01", "assetId": "factory.box.large", "position": { "x": -3, "y": 0, "z": 9 }, "rotationY": 0.2, "scale": 1 },
+    { "id": "box-02", "assetId": "factory.box.small", "position": { "x": 4, "y": 0, "z": 9 }, "rotationY": 0.6, "scale": 1 },
+    { "id": "box-03", "assetId": "factory.box.large", "position": { "x": 21, "y": 0, "z": 9 }, "rotationY": 0.2, "scale": 1 },
+    { "id": "cone-01", "assetId": "prop.cone", "position": { "x": -10, "y": 0, "z": 27 }, "rotationY": 0, "scale": 1 },
+    { "id": "cone-02", "assetId": "prop.cone", "position": { "x": -10, "y": 0, "z": 37 }, "rotationY": 0, "scale": 1 },
+    { "id": "light-01", "assetId": "prop.streetlight", "position": { "x": -21, "y": 0, "z": 25 }, "rotationY": 0, "scale": 1 },
+    { "id": "light-02", "assetId": "prop.streetlight", "position": { "x": 14, "y": 0, "z": 25 }, "rotationY": 0, "scale": 1 }
+  ],
+  "actors": [
+    {
+      "id": "scout-01",
+      "type": "vehicle.scout",
+      "assetId": "vehicle.sedan",
+      "position": { "x": -50, "y": 0, "z": 32 },
+      "rotationY": 1.5708,
+      "movement": { "radius": 0.9, "speed": 9, "turnRate": 8 },
+      "physics": { "shape": "capsule", "radius": 0.8, "height": 1.6 }
+    }
+  ]
+}

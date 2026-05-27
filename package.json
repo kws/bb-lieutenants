@@ -1,0 +1,23 @@
+{
+  "name": "bb-lieutenants",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc && vite build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@babylonjs/core": "latest",
+    "@babylonjs/inspector": "latest",
+    "@babylonjs/loaders": "latest",
+    "@dimforge/rapier3d-compat": "latest",
+    "vite": "latest"
+  },
+  "devDependencies": {
+    "typescript": "latest",
+    "vitest": "latest"
+  }
+}

@@ -1,0 +1,120 @@
+{
+  "road.straight": {
+    "url": "/assets/kenney/city-kit-roads/road-straight.glb",
+    "category": "terrain",
+    "defaultScale": 8,
+    "defaultRotationY": 1.5708,
+    "defaultNav": { "blocks": false, "shape": "rect", "width": 4, "depth": 8, "terrainCost": 1 }
+  },
+  "road.bend": {
+    "url": "/assets/kenney/city-kit-roads/road-bend.glb",
+    "category": "terrain",
+    "defaultScale": 8,
+    "defaultRotationY": 1.5708,
+    "defaultNav": { "blocks": false, "shape": "rect", "width": 8, "depth": 8, "terrainCost": 1 }
+  },
+  "road.crossroad": {
+    "url": "/assets/kenney/city-kit-roads/road-crossroad.glb",
+    "category": "terrain",
+    "defaultScale": 8,
+    "defaultRotationY": 1.5708,
+    "defaultNav": { "blocks": false, "shape": "rect", "width": 8, "depth": 8, "terrainCost": 1 }
+  },
+  "road.intersection": {
+    "url": "/assets/kenney/city-kit-roads/road-intersection.glb",
+    "category": "terrain",
+    "defaultScale": 8,
+    "defaultRotationY": 1.5708,
+    "defaultNav": { "blocks": false, "shape": "rect", "width": 8, "depth": 8, "terrainCost": 1 }
+  },
+  "road.end": {
+    "url": "/assets/kenney/city-kit-roads/road-end.glb",
+    "category": "terrain",
+    "defaultScale": 8,
+    "defaultRotationY": 1.5708,
+    "defaultNav": { "blocks": false, "shape": "rect", "width": 4, "depth": 8, "terrainCost": 1 }
+  },
+  "prop.cone": {
+    "url": "/assets/kenney/city-kit-roads/construction-cone.glb",
+    "category": "prop",
+    "defaultScale": 2,
+    "defaultNav": { "blocks": true, "shape": "circle", "radius": 0.5, "padding": 0.2 }
+  },
+  "prop.barrier": {
+    "url": "/assets/kenney/city-kit-roads/construction-barrier.glb",
+    "category": "prop",
+    "defaultScale": 2.5,
+    "defaultNav": { "blocks": true, "shape": "rect", "width": 3, "depth": 0.8, "padding": 0.2 }
+  },
+  "prop.streetlight": {
+    "url": "/assets/kenney/city-kit-roads/light-square.glb",
+    "category": "prop",
+    "defaultScale": 3,
+    "defaultNav": { "blocks": true, "shape": "circle", "radius": 0.6, "padding": 0.2 }
+  },
+  "building.industrial.a": {
+    "url": "/assets/kenney/city-kit-industrial/building-a.glb",
+    "category": "building",
+    "defaultScale": 5,
+    "defaultNav": { "blocks": true, "shape": "rect", "width": 12, "depth": 10, "padding": 1 }
+  },
+  "building.industrial.b": {
+    "url": "/assets/kenney/city-kit-industrial/building-b.glb",
+    "category": "building",
+    "defaultScale": 5,
+    "defaultNav": { "blocks": true, "shape": "rect", "width": 14, "depth": 10, "padding": 1 }
+  },
+  "building.industrial.c": {
+    "url": "/assets/kenney/city-kit-industrial/building-c.glb",
+    "category": "building",
+    "defaultScale": 5,
+    "defaultNav": { "blocks": true, "shape": "rect", "width": 10, "depth": 10, "padding": 1 }
+  },
+  "building.industrial.d": {
+    "url": "/assets/kenney/city-kit-industrial/building-d.glb",
+    "category": "building",
+    "defaultScale": 5,
+    "defaultNav": { "blocks": true, "shape": "rect", "width": 9, "depth": 8, "padding": 1 }
+  },
+  "nature.tree.oak": {
+    "url": "/assets/kenney/nature-kit/tree_oak.glb",
+    "category": "vegetation",
+    "defaultScale": 3,
+    "defaultNav": { "blocks": true, "shape": "circle", "radius": 1.4, "padding": 0.4 }
+  },
+  "nature.tree.default": {
+    "url": "/assets/kenney/nature-kit/tree_default.glb",
+    "category": "vegetation",
+    "defaultScale": 3,
+    "defaultNav": { "blocks": true, "shape": "circle", "radius": 1.4, "padding": 0.4 }
+  },
+  "nature.rock.large": {
+    "url": "/assets/kenney/nature-kit/rock_largeA.glb",
+    "category": "rock",
+    "defaultScale": 2.8,
+    "defaultNav": { "blocks": true, "shape": "circle", "radius": 1.2, "padding": 0.3 }
+  },
+  "nature.stone.large": {
+    "url": "/assets/kenney/nature-kit/stone_largeA.glb",
+    "category": "rock",
+    "defaultScale": 2.8,
+    "defaultNav": { "blocks": true, "shape": "circle", "radius": 1.2, "padding": 0.3 }
+  },
+  "factory.box.large": {
+    "url": "/assets/kenney/factory-kit/box-large.glb",
+    "category": "prop",
+    "defaultScale": 3,
+    "defaultNav": { "blocks": true, "shape": "rect", "width": 2.4, "depth": 2.4, "padding": 0.2 }
+  },
+  "factory.box.small": {
+    "url": "/assets/kenney/factory-kit/box-small.glb",
+    "category": "prop",
+    "defaultScale": 2.4,
+    "defaultNav": { "blocks": true, "shape": "rect", "width": 1.8, "depth": 1.8, "padding": 0.2 }
+  },
+  "vehicle.sedan": {
+    "url": "/assets/kenney/car-kit/sedan.glb",
+    "category": "vehicle",
+    "defaultScale": 2.5
+  }
+}

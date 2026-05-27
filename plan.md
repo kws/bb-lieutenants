@@ -1,0 +1,1294 @@
+Below is an implementation-ready spec for a **first 3D isometric navigable-world POC**. It deliberately excludes multiplayer, resource gameplay, AI, production UI, and economy. The goal is to prove that the rendering, asset loading, map format, navigability model, and basic movement/physics all work together.
+
+Kenney is a good fit for this slice: their 3D import guide says Kenney distributes glTF assets as **GLB**, recommends GLB for BabylonJS, and notes that isometric renders may also be included in some 3D packages. ([Kenney][1]) The City Kit Industrial page, for example, is a 3D CC0 pack with buildings/factory/warehouse-style content. ([Kenney][2])
+
+---
+
+# POC spec: 3D isometric navigable world
+
+## 1. Objective
+
+Build a browser-based 3D scene that loads low-poly Kenney-style GLB assets, renders them with an isometric RTS camera, defines a map through JSON, computes navigability from object footprints, and allows a single controllable vehicle/unit to move across the map using click-to-move pathfinding.
+
+The POC should answer these questions:
+
+1. Can we load and place 3D assets cleanly?
+2. Can we build maps from data rather than hand-coded scenes?
+3. Can we define which parts of the world are navigable?
+4. Can a unit move to a clicked destination without passing through buildings/trees/rocks?
+5. Can we keep the scene readable in a C&C-like isometric camera?
+6. Can this architecture later support RTS gameplay and multiplayer?
+
+---
+
+## 2. Recommended stack
+
+Use this stack for the first implementation:
+
+```text
+TypeScript
+Vite
+Babylon.js
+@babylonjs/loaders
+@dimforge/rapier3d-compat
+Vitest
+```
+
+Reasoning:
+
+Babylon.js gives us a fast path to a complete 3D game scene: camera, lights, GLB loading, asset containers, picking, shadows, and inspector tooling. Babylon’s loader docs show support for `.gltf` and `.glb`, and recommend bringing in loaders via `@babylonjs/loaders/dynamic` or `@babylonjs/loaders` in bundled apps. ([GitHub][3])
+
+Rapier is optional for very early rendering, but include it now because it gives us a clean path for kinematic movement and obstacle handling. Rapier’s JavaScript character controller computes corrected movement using ray/shape casts, can stop at obstacles, slide on slopes, climb small steps, and can be used for moving objects that are not literal characters. ([Rapier][4])
+
+Do **not** introduce React, multiplayer, Colyseus, PartyKit, ECS libraries, procedural generation, or a visual map editor in this slice.
+
+---
+
+## 3. Non-goals
+
+The POC must not attempt these yet:
+
+```text
+No multiplayer
+No resource harvesting
+No unit production
+No combat
+No strategic AI
+No fog of war
+No deterministic simulation
+No save-game system
+No procedural terrain
+No full in-browser map editor
+No production asset pipeline
+No user accounts
+```
+
+This is a **world/navigation/rendering** slice only.
+
+---
+
+# 4. User-visible behavior
+
+When the app starts, the user sees a small isometric 3D map with:
+
+```text
+Ground plane
+Road/path areas
+Trees
+Rocks
+A few buildings
+A few decorative objects
+One controllable vehicle/unit
+Debug nav-grid toggle
+```
+
+The user can:
+
+```text
+Pan camera
+Zoom camera
+Rotate camera in 90° increments or free yaw
+Click ground to move the selected vehicle
+See a path preview/debug line
+See blocked nav cells in debug mode
+Toggle between isometric camera and optional chase camera
+Reset vehicle to spawn
+Reload map
+```
+
+The controlled vehicle should:
+
+```text
+Path around buildings and trees
+Stop if no path exists
+Smoothly follow waypoints
+Rotate toward movement direction
+Not pass through solid obstacles
+Repath if it gets stuck
+```
+
+---
+
+# 5. POC acceptance criteria
+
+The POC is complete when all of the following are true:
+
+| Area              | Acceptance criterion                                                                                    |
+| ----------------- | ------------------------------------------------------------------------------------------------------- |
+| App boot          | `npm install && npm run dev` starts a browser app through Vite.                                         |
+| Rendering         | A Babylon.js scene renders a 3D map with ground, lights, camera, and at least 15 placed static objects. |
+| Assets            | At least 3 different asset categories are loaded: building, vegetation, vehicle.                        |
+| Camera            | Default camera is orthographic/isometric and supports pan + zoom.                                       |
+| Map data          | Scene is built from a JSON map file, not hard-coded object placement.                                   |
+| Nav grid          | The app generates a nav grid from the map’s object footprints.                                          |
+| Debug overlay     | Pressing a key toggles visible blocked/walkable cells.                                                  |
+| Click-to-move     | Clicking walkable ground commands the vehicle to move there.                                            |
+| Pathfinding       | Vehicle uses A* over the nav grid and avoids blocked cells.                                             |
+| Physics/collision | Vehicle does not pass through solid obstacles.                                                          |
+| Stuck handling    | If movement is blocked for more than a short threshold, vehicle stops and logs/repaths.                 |
+| Tests             | Core nav-grid and A* functions have unit tests.                                                         |
+| Extensibility     | Map schema can later support resource nodes, player starts, unit types, and terrain costs.              |
+
+---
+
+# 6. Project structure
+
+Use this directory structure:
+
+```text
+poc-3d-rts-world/
+  package.json
+  vite.config.ts
+  tsconfig.json
+  index.html
+
+  public/
+    assets/
+      kenney/
+        README.md
+        city-kit-industrial/
+        nature-kit/
+        car-kit/
+    maps/
+      poc.map.json
+    asset-registry.json
+
+  src/
+    main.ts
+
+    app/
+      GameApp.ts
+      GameLoop.ts
+
+    render/
+      createEngine.ts
+      createScene.ts
+      AssetManager.ts
+      CameraController.ts
+      Lighting.ts
+      Ground.ts
+      DebugDraw.ts
+      NavGridOverlay.ts
+
+    map/
+      MapTypes.ts
+      MapLoader.ts
+      MapBuilder.ts
+      FootprintRasterizer.ts
+
+    nav/
+      NavGrid.ts
+      AStar.ts
+      NavTypes.ts
+      nearestWalkable.ts
+
+    physics/
+      PhysicsWorld.ts
+      ColliderFactory.ts
+
+    sim/
+      Actor.ts
+      VehicleController.ts
+      MovementTypes.ts
+
+    input/
+      InputController.ts
+      Picking.ts
+      Hotkeys.ts
+
+    debug/
+      DebugPanel.ts
+      Stats.ts
+
+    test/
+      navgrid.test.ts
+      astar.test.ts
+      rasterizer.test.ts
+```
+
+---
+
+# 7. Coordinate system
+
+Use a consistent RTS-friendly coordinate system:
+
+```text
+X = east/west
+Y = up/down
+Z = north/south
+```
+
+All game logic should use world units, not pixels.
+
+Recommended defaults:
+
+```ts
+const WORLD_UNITS_PER_TILE = 2;
+const MAP_CELLS_X = 64;
+const MAP_CELLS_Z = 64;
+const WORLD_WIDTH = MAP_CELLS_X * WORLD_UNITS_PER_TILE;
+const WORLD_DEPTH = MAP_CELLS_Z * WORLD_UNITS_PER_TILE;
+```
+
+The ground plane should be centered at world origin:
+
+```text
+x range: -64 to +64 if 64 cells × 2 units
+z range: -64 to +64 if 64 cells × 2 units
+```
+
+Cell conversion helpers:
+
+```ts
+export function worldToCell(
+  x: number,
+  z: number,
+  grid: NavGrid
+): { cx: number; cz: number } {
+  const halfW = grid.widthCells * grid.cellSize * 0.5;
+  const halfD = grid.depthCells * grid.cellSize * 0.5;
+
+  return {
+    cx: Math.floor((x + halfW) / grid.cellSize),
+    cz: Math.floor((z + halfD) / grid.cellSize),
+  };
+}
+
+export function cellToWorldCenter(
+  cx: number,
+  cz: number,
+  grid: NavGrid
+): { x: number; z: number } {
+  const halfW = grid.widthCells * grid.cellSize * 0.5;
+  const halfD = grid.depthCells * grid.cellSize * 0.5;
+
+  return {
+    x: cx * grid.cellSize - halfW + grid.cellSize * 0.5,
+    z: cz * grid.cellSize - halfD + grid.cellSize * 0.5,
+  };
+}
+```
+
+---
+
+# 8. Map format
+
+The POC map should be a JSON file.
+
+Example:
+
+```json
+{
+  "version": 1,
+  "name": "poc-industrial-yard",
+  "size": {
+    "cellsX": 64,
+    "cellsZ": 64,
+    "cellSize": 2
+  },
+  "terrain": {
+    "base": "grass",
+    "heightMode": "flat"
+  },
+  "playerStarts": [
+    {
+      "id": "player-1-start",
+      "position": { "x": -40, "y": 0, "z": -40 },
+      "rotationY": 0
+    }
+  ],
+  "placements": [
+    {
+      "id": "factory-01",
+      "assetId": "building.factory.small",
+      "position": { "x": 0, "y": 0, "z": 0 },
+      "rotationY": 0,
+      "scale": 1,
+      "nav": {
+        "blocks": true,
+        "shape": "rect",
+        "width": 10,
+        "depth": 8,
+        "padding": 1
+      },
+      "physics": {
+        "solid": true,
+        "shape": "box",
+        "size": { "x": 10, "y": 6, "z": 8 }
+      }
+    },
+    {
+      "id": "tree-01",
+      "assetId": "nature.tree.oak",
+      "position": { "x": -16, "y": 0, "z": 12 },
+      "rotationY": 0.4,
+      "scale": 1,
+      "nav": {
+        "blocks": true,
+        "shape": "circle",
+        "radius": 1.5,
+        "padding": 0.5
+      },
+      "physics": {
+        "solid": true,
+        "shape": "cylinder",
+        "radius": 1.5,
+        "height": 5
+      }
+    },
+    {
+      "id": "road-01",
+      "assetId": "terrain.road.straight",
+      "position": { "x": 0, "y": 0.02, "z": -20 },
+      "rotationY": 1.5708,
+      "scale": 1,
+      "nav": {
+        "blocks": false,
+        "terrainCost": 0.75
+      },
+      "physics": {
+        "solid": false
+      }
+    }
+  ],
+  "actors": [
+    {
+      "id": "scout-01",
+      "type": "vehicle.scout",
+      "assetId": "vehicle.car.small",
+      "position": { "x": -40, "y": 0, "z": -40 },
+      "rotationY": 0,
+      "movement": {
+        "radius": 0.8,
+        "speed": 8,
+        "turnRate": 8
+      },
+      "physics": {
+        "shape": "capsule",
+        "radius": 0.7,
+        "height": 1.2
+      }
+    }
+  ]
+}
+```
+
+Important design choice: **the map schema defines navigability explicitly through footprints**. Do not attempt to infer navigation from arbitrary GLB mesh geometry in this POC. Mesh-derived navigation can come later.
+
+---
+
+# 9. Asset registry
+
+Use an asset registry so the map file does not reference raw file paths everywhere.
+
+Example `public/asset-registry.json`:
+
+```json
+{
+  "building.factory.small": {
+    "url": "/assets/kenney/city-kit-industrial/Models/GLB/factory.glb",
+    "category": "building",
+    "defaultScale": 1,
+    "defaultNav": {
+      "blocks": true,
+      "shape": "rect",
+      "width": 10,
+      "depth": 8,
+      "padding": 1
+    }
+  },
+  "nature.tree.oak": {
+    "url": "/assets/kenney/nature-kit/Models/GLB/tree.glb",
+    "category": "vegetation",
+    "defaultScale": 1,
+    "defaultNav": {
+      "blocks": true,
+      "shape": "circle",
+      "radius": 1.5,
+      "padding": 0.5
+    }
+  },
+  "vehicle.car.small": {
+    "url": "/assets/kenney/car-kit/Models/GLB/car.glb",
+    "category": "vehicle",
+    "defaultScale": 1
+  },
+  "terrain.road.straight": {
+    "url": "/assets/kenney/road-kit/Models/GLB/road-straight.glb",
+    "category": "terrain",
+    "defaultScale": 1,
+    "defaultNav": {
+      "blocks": false,
+      "terrainCost": 0.75
+    }
+  }
+}
+```
+
+The exact Kenney filenames may differ depending on the downloaded packs. The implementation should log a clear error if an asset path is missing, and should optionally substitute a primitive placeholder box/cylinder in development mode.
+
+---
+
+# 10. Asset loading behavior
+
+Implement `AssetManager` with this behavior:
+
+```ts
+class AssetManager {
+  async loadRegistry(url: string): Promise<void>;
+  async preloadAsset(assetId: string): Promise<void>;
+  async instantiate(assetId: string, name: string): Promise<BABYLON.TransformNode>;
+}
+```
+
+Requirements:
+
+1. Load each unique GLB only once.
+2. Store it as an asset container or source root node.
+3. Instantiate/copy it for each map placement.
+4. Normalize the asset root so map placement controls position, rotation, and scale.
+5. Mark decorative meshes as non-pickable unless needed.
+6. Keep the ground mesh pickable for click-to-move.
+
+Use Babylon’s current loader functions rather than legacy SceneLoader patterns where possible. Babylon’s docs list `LoadAssetContainerAsync`, `AppendSceneAsync`, `LoadSceneAsync`, and `ImportMeshAsync` as module-level loading functions, and show that `.gltf` and `.glb` are supported through the loader plugin. ([GitHub][3])
+
+---
+
+# 11. Rendering spec
+
+## Scene
+
+Create:
+
+```text
+Babylon Engine
+Babylon Scene
+Orthographic isometric camera
+Hemispheric light
+Directional light
+Ground plane
+Optional shadows
+Debug layer toggle
+```
+
+Recommended camera defaults:
+
+```ts
+alpha = -Math.PI / 4;  // yaw
+beta = Math.PI / 3;    // pitch
+radius = 100;
+target = Vector3.Zero();
+mode = ORTHOGRAPHIC_CAMERA;
+orthoSize = 60;
+```
+
+The app should feel like an RTS, not a free-fly 3D editor.
+
+## Camera controls
+
+Implement custom controls rather than relying entirely on default camera controls:
+
+```text
+Middle mouse or right-drag: pan
+Mouse wheel: zoom
+Q/E: rotate camera yaw
+Home: reset camera
+F: follow selected actor
+C: toggle optional chase camera
+```
+
+Panning should be along the ground plane, not screen-space vertical movement.
+
+## Rendering debug toggles
+
+Use hotkeys:
+
+```text
+G = toggle nav grid
+P = toggle path line
+B = toggle placement footprints
+I = toggle Babylon inspector/debug layer
+R = reset vehicle
+C = toggle chase camera
+```
+
+The Babylon Inspector is useful for this phase because it lets developers inspect the live scene, mesh hierarchy, materials, transforms, and related runtime state. Babylon describes the Inspector as a diagnostic tool for inspecting and manipulating a scene in real time. ([Babylon.js Docs][5])
+
+---
+
+# 12. Navigability model
+
+The POC should use a **grid-based navigation model**.
+
+Do not use a navmesh yet.
+
+Reason: RTS-style movement, harvesting, building placement, fog of war, resource patches, and terrain costs are all naturally grid-friendly. Navmesh can come later if the game needs complex ramps, bridges, cliffs, or ride-along terrain traversal.
+
+## Nav cell data
+
+```ts
+export type NavCell = {
+  walkable: boolean;
+  terrainCost: number;
+  blockedBy?: string;
+};
+
+export class NavGrid {
+  widthCells: number;
+  depthCells: number;
+  cellSize: number;
+  cells: NavCell[];
+
+  isInside(cx: number, cz: number): boolean;
+  isWalkable(cx: number, cz: number): boolean;
+  setBlocked(cx: number, cz: number, blockedBy: string): void;
+  setTerrainCost(cx: number, cz: number, cost: number): void;
+  get(cx: number, cz: number): NavCell;
+}
+```
+
+Defaults:
+
+```text
+walkable = true
+terrainCost = 1
+```
+
+## Obstacle rasterization
+
+Every map placement with `nav.blocks = true` should be rasterized into the nav grid.
+
+Supported footprints for POC:
+
+```ts
+type NavFootprint =
+  | {
+      blocks: true;
+      shape: "rect";
+      width: number;
+      depth: number;
+      padding?: number;
+    }
+  | {
+      blocks: true;
+      shape: "circle";
+      radius: number;
+      padding?: number;
+    }
+  | {
+      blocks: false;
+      terrainCost?: number;
+    };
+```
+
+For vehicle navigation, expand blockers by the vehicle radius before pathfinding. This is the simplest way to prevent paths from scraping through gaps that the vehicle cannot physically fit through.
+
+In practical terms:
+
+```text
+effectiveObstaclePadding = footprint.padding + actor.movement.radius
+```
+
+## Diagonal movement
+
+A* should support 8-way movement, but disable corner-cutting.
+
+A diagonal step from `(x, z)` to `(x + 1, z + 1)` is allowed only if both side-adjacent cells are walkable:
+
+```text
+(x + 1, z)
+(x, z + 1)
+```
+
+This prevents the vehicle from sliding through diagonal cracks between two blocked cells.
+
+## Terrain cost
+
+Terrain cost should exist in the data model now, even if used lightly.
+
+Examples:
+
+```text
+road = 0.75
+grass = 1.0
+rough = 1.5
+water = blocked
+building = blocked
+```
+
+This lets future vehicles prefer roads without requiring a new navigation architecture.
+
+---
+
+# 13. Pathfinding
+
+Implement A* over the nav grid.
+
+Interface:
+
+```ts
+export type Cell = {
+  cx: number;
+  cz: number;
+};
+
+export type PathResult =
+  | {
+      ok: true;
+      cells: Cell[];
+      worldPoints: { x: number; z: number }[];
+      cost: number;
+    }
+  | {
+      ok: false;
+      reason: "start-blocked" | "target-blocked" | "no-path";
+      nearestTarget?: Cell;
+    };
+
+export function findPath(
+  grid: NavGrid,
+  start: Cell,
+  target: Cell,
+  options?: {
+    allowNearestTarget?: boolean;
+    maxSearchCells?: number;
+  }
+): PathResult;
+```
+
+Use octile distance for the heuristic:
+
+```ts
+function octile(dx: number, dz: number): number {
+  const F = Math.SQRT2 - 1;
+  return dx < dz ? F * dx + dz : F * dz + dx;
+}
+```
+
+After pathfinding, smooth the path lightly:
+
+```text
+Remove duplicate points
+Remove unnecessary collinear waypoints
+Optional: line-of-sight shortcut over walkable cells
+```
+
+Do not over-engineer smoothing yet.
+
+---
+
+# 14. Click picking
+
+Implement click-to-move as:
+
+```text
+Pointer down
+  → Babylon ray pick against ground mesh only
+  → Convert picked point to world X/Z
+  → Convert world point to nav cell
+  → If blocked, find nearest walkable cell
+  → Run A*
+  → Set actor path
+  → Draw debug path
+```
+
+The ground mesh should have a known name/tag:
+
+```ts
+ground.name = "ground.pickable";
+ground.isPickable = true;
+```
+
+Most decorative assets should not be pickable for movement. This keeps picking predictable.
+
+---
+
+# 15. Physics spec
+
+Use **basic kinematic physics**, not dynamic rigid-body simulation.
+
+The vehicle is not a tumbling physical object. It is an RTS-controlled actor that follows a path. Physics exists to prevent clipping and to prepare for later ride-along/collision behavior.
+
+## Rapier world
+
+Create:
+
+```ts
+class PhysicsWorld {
+  world: RAPIER.World;
+  characterController: RAPIER.KinematicCharacterController;
+
+  step(dt: number): void;
+  createStaticBox(...): PhysicsHandle;
+  createStaticCylinder(...): PhysicsHandle;
+  createKinematicActor(...): PhysicsActorHandle;
+}
+```
+
+Use:
+
+```text
+Static collider for ground
+Static colliders for buildings/trees/rocks
+Kinematic body/collider for vehicle
+```
+
+Vehicle movement loop:
+
+```ts
+const desired = computeDesiredTranslationAlongPath(actor, dt);
+
+characterController.computeColliderMovement(
+  actor.collider,
+  desired
+);
+
+const corrected = characterController.computedMovement();
+
+actor.rigidBody.setNextKinematicTranslation({
+  x: current.x + corrected.x,
+  y: current.y + corrected.y,
+  z: current.z + corrected.z
+});
+```
+
+Then sync the Babylon mesh from the Rapier rigid body after the physics step.
+
+Rapier’s docs specifically describe this two-step character-controller flow: compute the corrected movement from a desired translation, then apply the corrected movement to a collider or kinematic rigid body. ([Rapier][4])
+
+## Physics limitations for POC
+
+Do not implement:
+
+```text
+Vehicle suspension
+Wheel physics
+Rigid-body pushing
+Destructible objects
+Projectile physics
+Terrain deformation
+Dynamic obstacle avoidance
+```
+
+Implement only:
+
+```text
+Grounding
+Obstacle collision
+Kinematic movement
+Basic stuck detection
+```
+
+---
+
+# 16. Actor movement
+
+Actor state:
+
+```ts
+export type Actor = {
+  id: string;
+  assetId: string;
+  root: BABYLON.TransformNode;
+  physics: PhysicsActorHandle;
+
+  position: BABYLON.Vector3;
+  rotationY: number;
+
+  movement: {
+    radius: number;
+    speed: number;
+    turnRate: number;
+    path: BABYLON.Vector3[];
+    currentWaypointIndex: number;
+    state: "idle" | "moving" | "blocked";
+    stuckTime: number;
+  };
+};
+```
+
+Movement behavior:
+
+```text
+If no path: idle
+If path exists:
+  Target next waypoint
+  Move toward waypoint at speed
+  Rotate toward movement direction
+  If close enough, advance waypoint
+  If final waypoint reached, idle
+  If corrected physics movement is near zero while desired movement is nonzero, accumulate stuck time
+  If stuck time > threshold, stop and mark blocked
+```
+
+Recommended constants:
+
+```ts
+const WAYPOINT_REACHED_DISTANCE = 0.35;
+const STUCK_SPEED_EPSILON = 0.05;
+const STUCK_TIME_SECONDS = 0.75;
+```
+
+Rotation:
+
+```ts
+const desiredYaw = Math.atan2(direction.x, direction.z);
+actor.rotationY = dampAngle(actor.rotationY, desiredYaw, turnRate * dt);
+```
+
+---
+
+# 17. Map builder
+
+Implement `MapBuilder` as the orchestration layer.
+
+```ts
+class MapBuilder {
+  constructor(
+    private scene: BABYLON.Scene,
+    private assetManager: AssetManager,
+    private physicsWorld: PhysicsWorld
+  ) {}
+
+  async build(map: MapDefinition): Promise<BuiltMap>;
+}
+```
+
+Build flow:
+
+```text
+1. Create ground mesh
+2. Create NavGrid
+3. Load all unique assets referenced by map
+4. Instantiate static placements
+5. Apply transforms
+6. Rasterize nav footprints
+7. Create physics colliders
+8. Instantiate actors
+9. Create actor physics bodies
+10. Return BuiltMap
+```
+
+`BuiltMap`:
+
+```ts
+export type BuiltMap = {
+  map: MapDefinition;
+  navGrid: NavGrid;
+  placements: BuiltPlacement[];
+  actors: Actor[];
+};
+```
+
+---
+
+# 18. Development map
+
+Create one hand-authored map:
+
+```text
+poc-industrial-yard
+```
+
+It should include:
+
+```text
+1 ground plane
+1 road crossing through map
+3–5 buildings
+15–30 trees/rocks/crates/decorative objects
+1 vehicle spawn
+Several narrow-but-passable lanes
+At least one intentionally blocked area
+```
+
+The map should test pathfinding meaningfully:
+
+```text
+Vehicle can cross the map
+Vehicle must go around factory
+Vehicle cannot pass through dense forest/rocks
+Clicking blocked destination selects nearest walkable cell
+```
+
+---
+
+# 19. Debug UI
+
+Add a small HTML overlay, not a full UI framework.
+
+Display:
+
+```text
+FPS
+Camera mode
+Mouse world position
+Mouse nav cell
+Selected actor id
+Actor state
+Current path length
+Nav cell walkable/blocked
+```
+
+Example:
+
+```text
+FPS: 60
+Camera: ISO
+Mouse: x=12.4 z=-8.1
+Cell: 38, 27 walkable
+Actor: scout-01 moving
+Path: 14 waypoints
+```
+
+Debug hotkeys:
+
+```ts
+const HOTKEYS = {
+  toggleNavGrid: "KeyG",
+  togglePath: "KeyP",
+  toggleFootprints: "KeyB",
+  toggleInspector: "KeyI",
+  resetActor: "KeyR",
+  toggleCamera: "KeyC"
+};
+```
+
+---
+
+# 20. Testing requirements
+
+Use Vitest for pure logic tests.
+
+Minimum tests:
+
+## `NavGrid`
+
+```text
+Creates correct dimensions
+Converts world → cell correctly
+Converts cell → world center correctly
+Rejects out-of-bounds cells
+Blocks and unblocks expected cells
+```
+
+## `FootprintRasterizer`
+
+```text
+Rect footprint blocks expected cells
+Circle footprint blocks expected cells
+Padding expands blocked area
+Rotation is handled for rect footprints or explicitly rejected for POC
+```
+
+For the POC, it is acceptable to support only axis-aligned rectangular footprints initially. If rotated buildings are allowed visually, their nav footprint can remain axis-aligned until a later slice.
+
+## `AStar`
+
+```text
+Finds straight path in empty grid
+Avoids blocked cells
+Rejects blocked target
+Finds nearest walkable target when requested
+Prevents diagonal corner-cutting
+Returns no-path for separated regions
+```
+
+---
+
+# 21. Implementation phases
+
+## Phase 1 — Bootable 3D scene
+
+Deliver:
+
+```text
+Vite + TypeScript project
+Babylon engine and scene
+Ground plane
+Orthographic isometric camera
+Pan and zoom
+Basic light setup
+Debug overlay shell
+```
+
+Acceptance:
+
+```text
+App opens in browser and displays a simple 3D ground plane.
+Camera feels like an RTS camera.
+```
+
+---
+
+## Phase 2 — Asset loading
+
+Deliver:
+
+```text
+asset-registry.json
+AssetManager
+Load one building GLB
+Load one tree GLB
+Load one vehicle GLB
+Place them manually or through temporary config
+```
+
+Acceptance:
+
+```text
+At least three GLB assets appear in the scene.
+Missing assets produce readable console errors.
+```
+
+---
+
+## Phase 3 — JSON map loading
+
+Deliver:
+
+```text
+MapTypes.ts
+MapLoader.ts
+MapBuilder.ts
+poc.map.json
+```
+
+Acceptance:
+
+```text
+All scene placements come from JSON.
+Changing a placement in JSON changes the scene after refresh.
+```
+
+---
+
+## Phase 4 — Nav grid and debug overlay
+
+Deliver:
+
+```text
+NavGrid
+FootprintRasterizer
+NavGridOverlay
+Hotkey toggle
+```
+
+Acceptance:
+
+```text
+Buildings and trees mark cells as blocked.
+Debug overlay shows blocked/walkable cells.
+```
+
+---
+
+## Phase 5 — Pathfinding
+
+Deliver:
+
+```text
+AStar
+nearestWalkable
+Path debug rendering
+Click ground → compute path
+```
+
+Acceptance:
+
+```text
+Clicking a walkable point draws a valid path around blockers.
+Clicking a blocked point chooses nearest walkable destination or reports no valid point.
+```
+
+---
+
+## Phase 6 — Vehicle movement
+
+Deliver:
+
+```text
+Actor
+VehicleController
+Path following
+Yaw rotation
+Arrival/stuck states
+```
+
+Acceptance:
+
+```text
+Vehicle follows the computed path and stops at destination.
+Vehicle rotates in direction of travel.
+```
+
+---
+
+## Phase 7 — Basic Rapier collision
+
+Deliver:
+
+```text
+PhysicsWorld
+Static colliders
+Kinematic actor collider
+Babylon/Rapier transform sync
+```
+
+Acceptance:
+
+```text
+Vehicle does not visually pass through buildings or trees.
+If commanded into an impossible area, it stops or repaths.
+```
+
+---
+
+## Phase 8 — Polish and handoff
+
+Deliver:
+
+```text
+README
+Controls list
+Known limitations
+Unit tests
+One good demo map
+```
+
+Acceptance:
+
+```text
+A new developer or coding agent can run, understand, and extend the POC.
+```
+
+---
+
+# 22. README requirements
+
+The agent should create a `README.md` with:
+
+```text
+Project purpose
+Setup commands
+How to add Kenney assets
+Expected asset folder structure
+Controls
+Map format overview
+Debug hotkeys
+Known limitations
+Next suggested slices
+```
+
+Example setup section:
+
+````md
+## Setup
+
+```bash
+npm install
+npm run dev
+````
+
+Place Kenney GLB assets under:
+
+```text
+public/assets/kenney/
+```
+
+Then update:
+
+```text
+public/asset-registry.json
+public/maps/poc.map.json
+```
+
+````
+
+---
+
+# 23. Known limitations to document
+
+The agent should explicitly document these:
+
+```text
+Navigation is grid-based, not navmesh-based.
+Footprints are manually authored; they are not inferred from GLB geometry.
+Terrain is flat.
+Physics is kinematic only.
+There is only one controllable actor.
+There is no multiplayer.
+There is no gameplay state beyond movement.
+Asset filenames depend on downloaded Kenney packs.
+````
+
+---
+
+# 24. Future slices enabled by this POC
+
+After this works, the next slices are straightforward:
+
+```text
+Map authoring tool
+Multiple selectable units
+Box selection
+Command queue
+Resource nodes
+Harvest/refinery loop
+Building placement preview
+Fog of war
+Server-authoritative multiplayer
+Unit sensors
+Attack-move
+Formation movement
+Road preference and terrain penalties
+Navmesh/ramp support
+Ride-along perspective camera
+```
+
+The important thing is that this POC already creates the foundation those systems need: world coordinates, map data, asset placement, navigability, physics boundaries, and actor movement.
+
+---
+
+# 25. Copy-paste implementation brief for an agent
+
+```text
+Implement a browser-based TypeScript/Vite POC for a 3D isometric RTS-style navigable world.
+
+Use Babylon.js for rendering and GLB asset loading. Use @babylonjs/loaders for GLB support. Use @dimforge/rapier3d-compat for basic kinematic collision. Do not implement multiplayer, economy, combat, AI, or production UI.
+
+The app must load a JSON map from public/maps/poc.map.json. The map defines size, terrain, static placements, and one actor. Static placements reference asset IDs from public/asset-registry.json. Assets are Kenney-style GLB files stored under public/assets/kenney/.
+
+Implement:
+- Babylon engine/scene setup.
+- Orthographic isometric RTS camera with pan and zoom.
+- AssetManager that loads each GLB once and instantiates it.
+- MapLoader and MapBuilder that construct the scene from JSON.
+- NavGrid generated from manually authored placement footprints.
+- A* pathfinding over the nav grid with 8-way movement and no diagonal corner-cutting.
+- Click-to-move by ray-picking the ground.
+- One controllable vehicle actor that follows computed paths.
+- Basic Rapier static colliders for obstacles and kinematic collider for the vehicle.
+- Debug overlays for nav grid, path, actor state, and mouse cell.
+- Vitest tests for NavGrid, footprint rasterization, and A*.
+
+Acceptance:
+- npm install && npm run dev starts the app.
+- A 3D isometric map renders with buildings, trees, roads/decorations, and one vehicle.
+- The map is data-driven from JSON.
+- The nav grid marks buildings/trees as blocked.
+- Pressing G toggles nav-grid debug.
+- Clicking walkable ground moves the vehicle there.
+- The vehicle paths around obstacles.
+- The vehicle does not pass through solid objects.
+- Core navigation logic has tests.
+- README documents setup, controls, asset folder layout, map format, and limitations.
+```
+
+My recommendation is to keep this POC brutally focused: **one map, one actor, grid navigation, GLB assets, isometric camera, basic collision**. Once that feels good, the multiplayer/backend decision becomes much lower-risk because there will be an actual simulation and map model to host.
+
+[1]: https://kenney.nl/knowledge-base/game-assets-3d/importing-3d-models-into-game-engines "https://kenney.nl/knowledge-base/game-assets-3d/importing-3d-models-into-game-engines"
+[2]: https://kenney.nl/assets/city-kit-industrial "https://kenney.nl/assets/city-kit-industrial"
+[3]: https://github.com/BabylonJS/Documentation/blob/master/content/features/featuresDeepDive/importers/loadingFileTypes.md "https://github.com/BabylonJS/Documentation/blob/master/content/features/featuresDeepDive/importers/loadingFileTypes.md"
+[4]: https://rapier.rs/docs/user_guides/javascript/character_controller/ "https://rapier.rs/docs/user_guides/javascript/character_controller/"
+[5]: https://doc.babylonjs.com/toolsAndResources/inspectorv2/ "https://doc.babylonjs.com/toolsAndResources/inspectorv2/"
