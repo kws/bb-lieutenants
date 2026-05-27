@@ -15,6 +15,7 @@ The dev server serves the app from the repo root. The demo map is `public/maps/p
 
 - Left click: move the selected vehicle.
 - Shift + left click: direct collision test. The vehicle ignores A* and drives straight toward the clicked point so Rapier can stop it on buildings/props.
+- Lower-right inset: live hood camera from the selected vehicle.
 - Right or middle drag: pan camera.
 - Mouse wheel: zoom.
 - `Q` / `E`: rotate camera.

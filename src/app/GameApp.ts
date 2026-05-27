@@ -12,6 +12,7 @@ import { PhysicsWorld } from "../physics/PhysicsWorld";
 import { VehicleController } from "../sim/VehicleController";
 import { InputController } from "../input/InputController";
 import { DebugPanel } from "../debug/DebugPanel";
+import { VehicleCameraInset } from "../render/VehicleCameraInset";
 import { GameLoop } from "./GameLoop";
 
 export class GameApp {
@@ -41,10 +42,13 @@ export class GameApp {
     if (!actor) throw new Error("Built map did not create an actor.");
     const vehicleController = new VehicleController(actor, physicsWorld);
     vehicleController.syncFromPhysics();
+    const vehicleCameraInset = new VehicleCameraInset(scene);
+    vehicleCameraInset.update(actor);
+    scene.activeCameras = [cameraController.camera, vehicleCameraInset.camera];
 
     const navOverlay = new NavGridOverlay(scene, builtMap.navGrid);
     const debugDraw = new DebugDraw(scene);
-    const inputController = new InputController(scene, builtMap.navGrid, vehicleController, debugDraw);
+    const inputController = new InputController(scene, builtMap.navGrid, vehicleController, debugDraw, cameraController.camera);
     const debugPanel = new DebugPanel(this.debugElement);
 
     let pathVisible = true;
@@ -57,6 +61,7 @@ export class GameApp {
       vehicleController.update(dt);
       physicsWorld.step(dt);
       vehicleController.syncFromPhysics();
+      vehicleCameraInset.update(vehicleController.actor);
       debugPanel.update({
         fps: engine.getFps(),
         camera: cameraController.modeLabel,

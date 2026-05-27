@@ -2,6 +2,7 @@ import { ArcRotateCamera } from "@babylonjs/core/Cameras/arcRotateCamera";
 import { Camera } from "@babylonjs/core/Cameras/camera";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Scene } from "@babylonjs/core/scene";
+import { DEBUG_LAYER_MASK, WORLD_LAYER_MASK } from "./RenderLayers";
 
 const MIN_ORTHO_SIZE = 24;
 const MAX_ORTHO_SIZE = 110;
@@ -20,6 +21,7 @@ export class CameraController {
   ) {
     this.camera = new ArcRotateCamera("camera.iso", -Math.PI / 4, Math.PI / 3, 100, Vector3.Zero(), scene);
     this.camera.mode = Camera.ORTHOGRAPHIC_CAMERA;
+    this.camera.layerMask = WORLD_LAYER_MASK | DEBUG_LAYER_MASK;
     this.camera.lowerBetaLimit = Math.PI / 5;
     this.camera.upperBetaLimit = Math.PI / 2.4;
     this.camera.attachControl(canvas, false);
