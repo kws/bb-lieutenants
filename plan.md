@@ -47,95 +47,611 @@ These replace or refine assumptions in the original plan below:
 
 Before building a map authoring tool, define the terrain model that tool will author. The map should describe physical terrain facts, not every possible vehicle class.
 
-### Terrain Modeling Correction
+### Governing Terrain Rule
 
 Do not model terrain as object-like patches placed on top of a flat world. That approach treats hills, ridges, dikes, ramps, and cliffs like blockers or decals, and it breaks down immediately for normal game terrain.
 
-Terrain is the ground. The world should no longer be assumed flat with special terrain objects layered over it. Elevation must come from the ground model itself: a heightfield, terrain mesh, tile-corner heights, or another continuous surface representation that can express slopes, ridges, plateaus, dikes, and cliff edges as part of the walkable surface.
+Terrain is not one flat plane plus patches. Terrain is a set of named physical surfaces embedded in 3D space.
 
-Future terrain work should start from these rules:
+The main outdoor world may be represented by a heightfield. Additional traversable structures, such as bridges, decks, tunnel floors, cave floors, underwater floors, ramps, and overpasses, are additional surfaces.
+
+Water is a volume whose top lies above a bottom surface. Roads, rails, fords, bridges, and tunnels are transport semantics attached to surfaces, not height-producing terrain patches.
+
+A navigation node is identified by `surfaceId + cell coordinates`. Overlapping X/Z positions do not imply connectivity. Connectivity between surfaces is explicit through portals such as ramps, bridge approaches, tunnel mouths, lifts, fords, and docks.
+
+Use four terrain primitives:
 
 ```text
-The ground owns elevation.
-Terrain samples come from the ground surface, not from placed objects.
-Slopes and cliffs are derived from neighboring ground heights.
-Surface type and water depth annotate the ground.
-Buildings, trees, rocks, walls, and props remain placed objects with footprints/colliders.
+Surface = a traversable or physical 2.5D/mesh surface
+Volume  = water, air, cave space, solid earth/rock, etc.
+Overlay = semantic transport/material feature on a surface
+Portal  = explicit connection between surfaces or volumes
 ```
 
-The failed patch-based direction should not be extended with more special patch shapes, such as ramp, wedge, ridge, mound, or cliff objects. A dike-like test should instead be authored as ground elevation: one side has a gentle slope, the crest has height, and the far edge drops faster than the vehicle profile permits.
+This preserves the earlier rule that the ground owns elevation, while correcting the limit of a single heightfield: one heightfield is enough for hills, ridges, shorelines, slopes, cliffs, and mountains, but not for tunnels, caves, bridges, road-over-road crossings, rail-over-road, underwater volumes, or anything where more than one traversable thing exists at the same X/Z coordinate.
 
-Restart terrain from a shared ground source:
+### Current Sprint 1 Baseline
+
+The current implementation is intentionally flat:
 
 ```text
-TerrainField/TerrainGround is the authoritative source for elevation.
-The renderer builds the ground mesh from that source.
-Pathfinding samples the same source for cell heights and edge slopes.
-Physics/collision is aligned to the same source, or explicitly documented as simplified until terrain physics exists.
-Surface, road, water, and overlay data are annotation layers on the ground, not height-producing objects.
-Placed assets stay separate: buildings, vegetation, rocks, walls, props, and their blockers/colliders.
+MapDefinition version is 1.
+terrain.heightMode is "flat".
+public/maps/poc.map.json uses grass + flat + defaultCost 3.
+MapBuilder creates one flat Babylon ground and one flat Rapier ground.
+NavGrid stores X/Z cells with walkable + scalar terrainCost.
+A* cost is direction distance * destination terrainCost.
+VehicleController converts path points into Vector3(x, 0, z).
+Input picking accepts the mesh named "ground.pickable" and stores X/Z.
 ```
 
-Prefer a minimal heightfield or tile-corner-height schema before any editor work:
+That remains acceptable for Sprint 1. The next terrain work should replace the idea that the nav grid is the world with the rule that the nav grid samples the terrain world.
+
+### Surface Model
+
+A surface is any piece of terrain or engineered deck that can be sampled, rendered, collided with, and navigated on.
+
+Examples:
 
 ```text
-terrain.elevation: grid or heightmap-backed samples
-terrain.surface: per-cell surface/material data
-terrain.water: per-cell depth data
-terrain.overlays: roads, bridges, fords, ramps as annotations
+ground.overworld
+bridge.deck.east
+tunnel.floor.north
+cave.floor.alpha
+rail.viaduct.deck
+underwater.seabed
 ```
 
-The next proof should be a single authored ground profile, not a new patch type: flat approach, gentle slope up, short crest, steep drop. A wheeled profile should drive up the gentle side, slow while climbing, and reject the cliff edge because the derived edge slope/drop exceeds its limits.
+Recommended first surface types:
 
-Map-authored terrain facts should include:
-
-```text
-Height/elevation
-Surface type, such as grass, road, dirt, rock, sand, or water
-Water depth where applicable
-Optional overlays, such as road, bridge, ford, or ramp
-Static blockers from footprints
+```ts
+type TerrainSurface =
+  | HeightfieldSurface
+  | MeshSurface
+  | DeckSurface
+  | TunnelSurface;
 ```
 
-Vehicle movement profiles should describe how a vehicle interprets those facts:
+Location identity must include the surface:
 
-```text
-Surface movement costs
-Maximum normal slope
-Cliff/climb capability
-Water traversal capability
-Maximum water depth
-Uphill/downhill cost modifiers
+```ts
+type NavPoint = {
+  surfaceId: string;
+  x: number;
+  y: number;
+  z: number;
+};
 ```
 
-Traversal should be calculated mostly as an edge cost, not only as a tile cost. Moving from one cell to another depends on the destination surface, height delta, slope, cliff threshold, water depth, static blockers, and the selected vehicle's movement profile.
+A tank on `ground.overworld` is not automatically connected to a truck on `bridge.deck.east`, even if they occupy the same X/Z footprint. They are only connected if a ramp, tunnel mouth, bridge approach, elevator, ferry, ford, or another explicit portal connects them.
 
-The first implementation should avoid per-click recomputation by caching derived movement data by:
+### Outdoor Heightfield
+
+For the main outdoor terrain, use a corner-height grid:
 
 ```text
-terrain revision + movement profile id = cached movement/edge-cost layer
+cellsX * cellsZ cells
+(cellsX + 1) * (cellsZ + 1) height samples
+```
+
+Corner heights create a continuous surface. Each tile can be triangulated consistently, and height at any X/Z point can be interpolated.
+
+Runtime representation:
+
+```ts
+type HeightfieldSurface = {
+  id: string;
+  kind: "heightfield";
+  cellSize: number;
+  cellsX: number;
+  cellsZ: number;
+  cornerHeights: number[];
+  material: CellLayer<SurfaceMaterialId>;
+  roughness?: CellLayer<number>;
+};
+```
+
+This supports rolling hills, ridges, dikes, plateaus, valleys, ramps, cliffs, shorelines, mountain passes, sunken basins, and dry river beds without assuming `y = 0` is special.
+
+The runtime terrain query should become the authoritative API:
+
+```ts
+type SurfaceSample = {
+  surfaceId: string;
+  position: { x: number; y: number; z: number };
+  normal: { x: number; y: number; z: number };
+  material: SurfaceMaterialId;
+  roughness: number;
+  waterDepth: number;
+  overlays: string[];
+};
+
+interface TerrainQuery {
+  sampleSurface(surfaceId: string, x: number, z: number): SurfaceSample | undefined;
+  sampleBestSurface(x: number, z: number, filter?: SurfaceFilter): SurfaceSample | undefined;
+  sampleVolumes(x: number, y: number, z: number): TerrainVolumeSample[];
+}
+```
+
+Rendering, picking, movement, object placement, and physics should call this terrain query or consume data derived from it. That prevents rendering, nav, and physics from each inventing their own flat ground.
+
+### Water Volumes
+
+Water should be water sitting on top of sunk terrain, not a blue terrain tile.
+
+Represent a lake, river, sea, flooded quarry, harbor, reservoir, or underwater cave as a water volume with a top surface and a bottom surface:
+
+```ts
+type WaterBody = {
+  id: string;
+  kind: "water";
+  polygon: Array<{ x: number; z: number }>;
+  surface:
+    | { mode: "constantY"; y: number }
+    | { mode: "heightfield"; surfaceId: string };
+  bottomSurfaceId: string;
+  waterType: "fresh" | "salt" | "muddy" | "toxic";
+  flow?: { x: number; z: number; speed: number };
+  navigation?: {
+    surfaceAllowed: boolean;
+    submergedAllowed: boolean;
+    seabedAllowed: boolean;
+  };
+};
+```
+
+Depth is derived:
+
+```text
+waterDepth(x, z) = waterSurfaceY(x, z) - terrainBottomY(x, z)
+```
+
+If depth is less than or equal to zero, there is no water at that point.
+
+Movement profiles interpret the same water differently:
+
+```text
+wheeled vehicle: blocked if waterDepth > maxWadeDepth
+amphibious vehicle: allowed up to profile-specific depth
+boat: navigates water surface, blocked by land and shallow water
+submarine: navigates within water volume, needs min depth and clearance
+diver/underwater drone: may navigate near seabed or within depth bands
+```
+
+For the first underwater implementation, do not add full continuous 3D pathfinding. Model underwater movement as two or three water navigation layers, such as:
+
+```text
+lake.surface
+lake.shallow-submerged
+lake.deep-submerged
+lake.seabed
+```
+
+### Underground, Bridges, And Crossings
+
+Caves and tunnels are the reason a pure heightfield is not enough. A heightfield gives one Y value per X/Z point. A cave requires at least two: the hill surface above and the cave floor below.
+
+Represent caves and tunnels as separate surfaces inside air volumes:
+
+```ts
+type CaveVolume = {
+  id: string;
+  kind: "air";
+  underground: true;
+  floorSurfaceId: string;
+  ceilingSurfaceId?: string;
+  approximateClearance?: number;
+  polygon?: Array<{ x: number; z: number }>;
+};
+```
+
+A tunnel is:
+
+```text
+surface: tunnel.floor.north
+volume:  tunnel.air.north
+portal:  tunnel-mouth-west connects ground.overworld to tunnel.floor.north
+portal:  tunnel-mouth-east connects tunnel.floor.north to ground.overworld
+```
+
+Roads and rails should become transport overlays on surfaces, not objects that own terrain height:
+
+```ts
+type TransportOverlay = {
+  id: string;
+  type: "road" | "rail" | "bridge-road" | "ford" | "track" | "tunnel-road";
+  surfaceId: string;
+  corridor:
+    | { kind: "polyline"; points: Array<{ x: number; z: number }>; width: number }
+    | { kind: "polygon"; points: Array<{ x: number; z: number }> };
+  movement: {
+    allowedProfiles?: string[];
+    costMultiplier?: number;
+    preferred?: boolean;
+    lanes?: LaneSpec[];
+  };
+  renderAssetId?: string;
+};
+```
+
+The physical deck of a bridge is a surface. The road painted on the bridge is an overlay. The pillars are placed objects with blockers/colliders. The water under the bridge is a volume. Boats pass under the bridge only if their profile fits the vertical clearance.
+
+If two transport corridors overlap in X/Z but are on different surfaces, they do not connect. They only connect through an explicit portal, ramp, or junction:
+
+```ts
+type SurfacePortal = {
+  id: string;
+  kind: "ramp" | "tunnel-mouth" | "bridge-approach" | "stairs" | "lift" | "ford-entry";
+  from: { surfaceId: string; areaId?: string };
+  to: { surfaceId: string; areaId?: string };
+  constraints?: {
+    maxVehicleHeight?: number;
+    maxVehicleWidth?: number;
+    allowedProfiles?: string[];
+    maxSlope?: number;
+  };
+  cost?: number;
+};
+```
+
+### Movement Profiles And Edge Costs
+
+Terrain facts belong to the map. Vehicle movement profiles decide how those facts affect traversal.
+
+```ts
+type MovementProfile = {
+  id: string;
+  radius: number;
+  height: number;
+  mediums: {
+    land?: boolean;
+    waterSurface?: boolean;
+    underwater?: boolean;
+    air?: boolean;
+  };
+  surfaceCosts: Record<SurfaceMaterialId, number>;
+  overlayPreferences?: Record<string, number>;
+  slope: {
+    maxNormalSlopeDeg: number;
+    maxRoadSlopeDeg?: number;
+    uphillPenalty: number;
+    downhillPenalty: number;
+  };
+  steps: {
+    maxStepUp: number;
+    maxDropDown: number;
+    maxCliffDelta: number;
+  };
+  water?: {
+    maxWadeDepth?: number;
+    minBoatDepth?: number;
+    minSubmergedDepth?: number;
+    maxCurrentSpeed?: number;
+  };
+  clearance?: {
+    minCeiling: number;
+    minWidth: number;
+  };
+};
 ```
 
 Initial profiles:
 
 ```text
-wheeled.vehicle: roads preferred, grass allowed, steep slopes blocked, water blocked
-climber.vehicle: steep/rocky terrain allowed at high cost, water blocked
-water.vehicle: water allowed, land blocked or expensive depending on craft type
-amphibious.vehicle: land and shallow water allowed, deep water optional by profile
+wheeled.scout: land only, road preferred, low slope tolerance, shallow ford only
+tracked.tank: land only, rough ground tolerated, moderate slope tolerance
+climber.vehicle: land only, steep slope allowed, rock allowed at high cost
+hovercraft: land + water surface, bad on steep slopes
+boat.light: water surface only, requires minimum depth
+submarine.small: underwater, requires depth and volume clearance
+infantry: land, higher slope tolerance, can use stairs/tunnels/caves
+train: rail overlay only, limited turning and slope
 ```
 
-Acceptance for this slice:
+Traversal should be calculated mostly as an edge cost, not only as a tile cost:
+
+```ts
+type NavNode = {
+  surfaceId: string;
+  cx: number;
+  cz: number;
+};
+
+type EdgeEval =
+  | { allowed: true; cost: number; reason?: undefined }
+  | { allowed: false; reason: string };
+
+function evaluateEdge(
+  terrain: TerrainQuery,
+  profile: MovementProfile,
+  from: NavNode,
+  to: NavNode,
+): EdgeEval;
+```
+
+The edge evaluator samples from height, to height, horizontal distance, 3D distance, slope, step/cliff delta, destination material, water depth, overlay bonuses, blockers, clearance, and portal constraints.
+
+Simple first formula:
 
 ```text
-Map schema supports height, surface, water depth, and overlays.
-Movement profiles convert terrain facts into walkability and traversal cost.
-A* accepts a movement profile or derived movement layer.
-Hills are slower uphill than flat ground for normal vehicles.
-Steep cliffs are blocked unless the profile has climb capability.
-Water is blocked unless the profile has water/amphibious capability.
-The demo includes at least one hill/cliff/water test area.
-Unit tests cover slope, cliff, water, and profile-specific traversal.
+base = horizontalDistance
+surface = profile.surfaceCosts[destinationMaterial]
+slopePenalty =
+  1
+  + uphillPenalty   * max(0, slope)
+  + downhillPenalty * max(0, -slope)
+overlayMultiplier = road/rail/track preference if present
+cost = base * surface * slopePenalty * overlayMultiplier
+```
+
+Block the edge if the surface is unsupported, slope exceeds the profile limit, height delta exceeds step/cliff limits, water depth violates the profile, the cell is blocked on that surface, a portal is absent between stacked surfaces, or portal clearance is too low/narrow.
+
+Important A* detail: current terrain costs are clamped to at least `1` to keep the heuristic stable. If road overlays ever make cost less than `1`, the heuristic must use the actual minimum possible edge multiplier, or the route may become non-admissible. The simpler option is to keep roads at `1` and make grass, mud, forest, rock, and slopes cost more than `1`.
+
+### Movement Layers
+
+Do not throw away the grid immediately. Evolve it from the current `NavGrid` into cached movement layers derived from the terrain world:
+
+```text
+TerrainWorld
+  surfaces
+  water bodies
+  overlays
+  portals
+  blockers
+
+MovementLayerCache
+  key: terrain revision + movement profile id
+  value: derived walkability + edge costs
+```
+
+New structure:
+
+```ts
+type MovementLayer = {
+  profileId: string;
+  terrainRevision: number;
+  surfaces: Record<string, SurfaceMovementGrid>;
+  portals: PortalMovementEdge[];
+};
+
+type SurfaceMovementGrid = {
+  surfaceId: string;
+  widthCells: number;
+  depthCells: number;
+  nodes: MovementNode[];
+};
+
+type MovementNode = {
+  walkable: boolean;
+  sampleY: number;
+  material: SurfaceMaterialId;
+  waterDepth: number;
+  overlays: string[];
+  blockedBy?: string;
+};
+```
+
+Pathfinding becomes:
+
+```ts
+findPath(layer, start: NavNode, target: NavNode)
+```
+
+instead of:
+
+```ts
+findPath(grid, start: Cell, target: Cell)
+```
+
+### Map Schema V2 Direction
+
+Introduce a versioned map schema instead of stretching the current flat v1 schema too far. Version 2 should remain backward-compatible by converting v1 maps into one flat `ground.overworld` surface during load.
+
+Compact v2 shape:
+
+```json
+{
+  "version": 2,
+  "name": "terrain-semantics-test",
+  "size": { "cellsX": 64, "cellsZ": 64, "cellSize": 2 },
+  "terrain": {
+    "revision": 1,
+    "defaultSurfaceId": "ground.overworld",
+    "surfaces": [],
+    "waterBodies": [],
+    "volumes": [],
+    "overlays": [],
+    "portals": []
+  },
+  "placements": [],
+  "actors": []
+}
+```
+
+For authoring, the editor can expose terrain operations like ridges, depressions, plateaus, ramps, and noise. The runtime should consume the resolved heightfield/mesh, not a pile of special gameplay patches.
+
+### Placement Anchors
+
+The current map places objects with absolute `{ x, y, z }`, and most objects use `y: 0`. The next schema should allow objects to anchor to a surface:
+
+```ts
+type PlacementAnchor =
+  | { kind: "absolute"; position: { x: number; y: number; z: number } }
+  | { kind: "surface"; surfaceId: string; x: number; z: number; offsetY?: number }
+  | { kind: "waterSurface"; waterBodyId: string; x: number; z: number; offsetY?: number };
+```
+
+Different asset classes need different foundation behavior:
+
+```text
+conformToTerrain: trees, rocks, debris
+requiresFlatPad: factories, barracks, power plants
+createsFoundation: building placement modifies terrain/pad
+cutsIntoTerrain: bunker, tunnel mouth, cave entrance
+floatsOnWater: boats, buoys, docks
+```
+
+Represent that explicitly:
+
+```ts
+type FoundationMode =
+  | "conform"
+  | "requires-flat"
+  | "flatten-pad"
+  | "deck"
+  | "cuts-into-terrain";
+```
+
+### Rendering, Physics, And Picking
+
+Rendering v1:
+
+```text
+Build one Babylon mesh from the heightfield.
+Use corner heights for vertices.
+Generate normals.
+Assign material by cell/slope/overlay.
+Make the terrain mesh pickable.
+Render water body surfaces separately over sunk terrain.
+Render bridge decks, tunnel floors, cave floors, ceilings, and walls as separate meshes.
+```
+
+Physics should not become the source of terrain truth. Physics enforces the terrain model.
+
+Staged physics:
+
+```text
+Stage A:
+  Visual terrain and nav terrain use real height.
+  Vehicle Y is snapped to terrain sample.
+  Rapier remains mostly for object collision.
+
+Stage B:
+  Replace flat ground collider with a heightfield or trimesh collider.
+  Kinematic actor follows the sampled terrain surface.
+
+Stage C:
+  Add separate colliders for bridge decks, tunnel floors, cave walls, ceilings, and water-volume triggers.
+```
+
+Pointer state should include surface and medium information:
+
+```ts
+type PointerNavState = {
+  world?: NavPoint;
+  cell?: NavNode;
+  surfaceId?: string;
+  medium?: "land" | "waterSurface" | "underwater" | "air";
+};
+```
+
+The engine must be able to distinguish clicks on overworld ground, bridge deck, road on bridge, water surface, tunnel floor, cave floor, and underground objects.
+
+### Terrain Implementation Slices
+
+Do not implement all of this at once.
+
+Slice 1, terrain surface v1:
+
+```text
+Goal: replace flat ground with one authoritative heightfield.
+
+Add:
+TerrainWorld
+TerrainSurface
+TerrainQuery
+heightAt / normalAt / materialAt
+custom Babylon terrain mesh
+NavPoint with y
+A* edge slope costs
+vehicle y snapping
+
+Acceptance:
+Map has a hill, gentle slope, crest, steep drop, and sunken basin.
+Wheeled vehicle climbs the gentle slope.
+Wheeled vehicle refuses the cliff edge.
+Uphill path costs more than flat path.
+Debug path follows terrain Y instead of drawing at constant Y.
+Objects anchor to terrain surface instead of y=0.
+```
+
+Slice 2, water volume v1:
+
+```text
+Goal: water is on top of sunk terrain.
+
+Add:
+WaterBody
+water depth query
+water material/render mesh
+shoreline derivation
+movement profiles with maxWadeDepth / minBoatDepth
+
+Acceptance:
+Car is blocked by deep water.
+Car can cross shallow ford if profile allows it.
+Boat can route across lake/river surface.
+Boat is blocked by land and shallow water.
+Amphibious unit can cross land and water according to profile.
+```
+
+Slice 3, multi-surface navigation:
+
+```text
+Goal: stacked surfaces and explicit portals.
+
+Add:
+surfaceId in nav nodes
+multiple movement grids
+portals
+bridge deck surface
+tunnel floor surface
+portal-aware A*
+
+Acceptance:
+Road bridge crosses water.
+Land vehicle crosses bridge.
+Boat passes under bridge if clearance allows.
+Road-over-road crossing does not create an accidental intersection.
+Ramp portal connects lower road to upper road.
+```
+
+Slice 4, underground/cave semantics:
+
+```text
+Goal: tunnels and caves are real spaces.
+
+Add:
+underground floor surfaces
+air volumes
+clearance constraints
+tunnel mouths
+camera/debug layer controls
+
+Acceptance:
+Unit can enter tunnel only through tunnel mouth.
+Surface unit and tunnel unit can share X/Z at different Y without semantic collision.
+Tall unit is blocked by low tunnel clearance.
+Cave route can pass under hill.
+```
+
+Slice 5, underwater missions:
+
+```text
+Goal: water volume gets depth-aware navigation.
+
+Add:
+submerged nav layers or simple 3D water graph
+depth bands
+seabed obstacles
+submarine movement profile
+
+Acceptance:
+Surface boat, amphibious unit, and submarine interpret the same water body differently.
+Submarine requires sufficient depth.
+Seabed unit follows bottom terrain.
+Surface craft cannot enter submerged cave unless clearance/depth allows.
 ```
 
 ---
@@ -673,7 +1189,7 @@ The POC should use a **grid-based navigation model**.
 
 Do not use a navmesh yet.
 
-Reason: RTS-style movement, harvesting, building placement, fog of war, resource patches, and terrain costs are all naturally grid-friendly. Navmesh can come later if the game needs complex ramps, bridges, cliffs, or ride-along terrain traversal.
+Reason: RTS-style movement, harvesting, building placement, fog of war, resource patches, and terrain costs are all naturally grid-friendly. Complex ramps, bridges, cliffs, and ride-along terrain traversal should first be represented as sampled surfaces, movement layers, and portals. Navmesh can still come later if the game needs it, but it is not the core terrain model.
 
 ## Nav cell data
 
@@ -1372,6 +1888,7 @@ The agent should explicitly document these:
 Navigation is grid-based, not navmesh-based.
 Footprints are manually authored; they are not inferred from GLB geometry.
 Terrain is flat.
+There are no named terrain surfaces, volumes, overlays, portals, or placement anchors yet.
 Physics is kinematic only.
 There is only one controllable actor.
 There is no multiplayer.
@@ -1392,6 +1909,11 @@ After this works, the next slices are straightforward:
 
 ```text
 Terrain semantics and movement profiles
+Heightfield terrain surface
+Water volumes
+Multi-surface and portal navigation
+Underground/cave semantics
+Underwater mission layers
 Map authoring tool
 Multiple selectable units
 Box selection
@@ -1406,7 +1928,6 @@ Attack-move
 Formation movement
 Per-vehicle road preference and terrain penalties
 Directional road lanes/right-side driving
-Navmesh/ramp support
 Toggleable or enlarged ride-along perspective camera
 ```
 
