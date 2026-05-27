@@ -11,6 +11,8 @@ npm run dev
 
 The dev server serves the app from the repo root. The demo map is `public/maps/poc.map.json`, and asset IDs are defined in `public/asset-registry.json`.
 
+The `main` branch deploys to GitHub Pages at <https://kws.github.io/bb-lieutenants/>.
+
 ## Controls
 
 - Left click: move the selected vehicle.

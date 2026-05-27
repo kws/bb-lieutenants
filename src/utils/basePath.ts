@@ -1,0 +1,10 @@
+const absoluteUrlPattern = /^[a-z][a-z\d+\-.]*:/i;
+
+export function assetUrl(path: string): string {
+  if (absoluteUrlPattern.test(path)) return path;
+
+  const base = import.meta.env.BASE_URL || "/";
+  const normalizedBase = base.endsWith("/") ? base : `${base}/`;
+  const normalizedPath = path.startsWith("/") ? path.slice(1) : path;
+  return `${normalizedBase}${normalizedPath}`;
+}

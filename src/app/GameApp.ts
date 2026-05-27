@@ -13,6 +13,7 @@ import { VehicleController } from "../sim/VehicleController";
 import { InputController } from "../input/InputController";
 import { DebugPanel } from "../debug/DebugPanel";
 import { VehicleCameraInset } from "../render/VehicleCameraInset";
+import { assetUrl } from "../utils/basePath";
 import { GameLoop } from "./GameLoop";
 
 export class GameApp {
@@ -33,10 +34,10 @@ export class GameApp {
 
     const cameraController = new CameraController(scene, this.canvas);
     const assetManager = new AssetManager(scene);
-    await assetManager.loadRegistry("/asset-registry.json");
+    await assetManager.loadRegistry(assetUrl("asset-registry.json"));
 
     const physicsWorld = await PhysicsWorld.create();
-    const map = await loadMap("/maps/poc.map.json");
+    const map = await loadMap(assetUrl("maps/poc.map.json"));
     const builtMap = await new MapBuilder(scene, assetManager, physicsWorld).build(map);
     const actor = builtMap.actors[0];
     if (!actor) throw new Error("Built map did not create an actor.");

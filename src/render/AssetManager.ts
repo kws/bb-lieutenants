@@ -8,6 +8,7 @@ import type { AssetContainer } from "@babylonjs/core/assetContainer";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import type { Scene } from "@babylonjs/core/scene";
 import type { AssetDefinition, AssetRegistry } from "../map/MapTypes";
+import { assetUrl } from "../utils/basePath";
 
 export class AssetManager {
   private registry: AssetRegistry = {};
@@ -34,15 +35,16 @@ export class AssetManager {
   async preloadAsset(assetId: string): Promise<void> {
     if (this.containers.has(assetId)) return;
     const definition = this.getDefinition(assetId);
+    const url = assetUrl(definition.url);
 
     try {
-      const container = await SceneLoader.LoadAssetContainerAsync("", definition.url, this.scene);
+      const container = await SceneLoader.LoadAssetContainerAsync("", url, this.scene);
       for (const mesh of container.meshes) {
         mesh.isPickable = false;
       }
       this.containers.set(assetId, container);
     } catch (error) {
-      console.error(`Failed to load asset "${assetId}" from ${definition.url}`, error);
+      console.error(`Failed to load asset "${assetId}" from ${url}`, error);
     }
   }
 
@@ -90,4 +92,3 @@ export class AssetManager {
     return mesh;
   }
 }
-
