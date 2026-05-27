@@ -1,6 +1,7 @@
 {
   "name": "bb-lieutenants",
   "version": "0.1.0",
+  "description": "Build & Bungle Lieutenants RTS world proof of concept",
   "private": true,
   "type": "module",
   "scripts": {

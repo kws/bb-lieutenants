@@ -1,6 +1,6 @@
-# BB Lieutenants RTS World POC
+# Build & Bungle Lieutenants RTS World POC
 
-Browser-based TypeScript/Vite demo for a 3D isometric RTS-style world. It loads Kenney GLB assets, builds a JSON-authored map, computes a grid navigation layer from explicit footprints, and moves one vehicle with click-to-move pathfinding plus Rapier kinematic collision.
+Browser-based TypeScript/Vite demo for **Build & Bungle Lieutenants**, a 3D isometric RTS-style world. It loads Kenney GLB assets, builds a JSON-authored map, computes a grid navigation layer from explicit footprints, and moves one vehicle with click-to-move pathfinding plus Rapier kinematic collision.
 
 ## Setup
 
