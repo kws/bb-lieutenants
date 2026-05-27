@@ -1,4 +1,106 @@
-Below is an implementation-ready spec for a **first 3D isometric navigable-world POC**. It deliberately excludes multiplayer, resource gameplay, AI, production UI, and economy. The goal is to prove that the rendering, asset loading, map format, navigability model, and basic movement/physics all work together.
+# Build & Bungle Lieutenants Sprint Tracker
+
+Status date: 2026-05-27.
+
+Live main-branch target: <https://kws.github.io/bb-lieutenants/>
+
+Latest cuts:
+
+| Commit | Status | Notes |
+| ------ | ------ | ----- |
+| `43a72c4` | Done | GitHub Pages build now uses the `/bb-lieutenants/` base path, and runtime JSON/GLB asset fetches use Vite's `BASE_URL`. |
+| `3db614b` | Done | Added lower-right vehicle camera inset, isolated sky for that inset, non-blocking pointer behavior, and visible route debug tube. |
+| `3556a19` | Done | Added GitHub Pages deployment workflow and full **Build & Bungle Lieutenants** naming in project metadata. |
+| `c1b7a47` | Done | Initial playable 3D demo cut: Babylon/Vite app, JSON map, Kenney assets, nav grid, A*, Rapier collision, debug UI, and tests. |
+
+## Sprint 1 Result
+
+| Area | Status | Notes |
+| ---- | ------ | ----- |
+| Bootable app | Done | Vite + TypeScript + Babylon app boots locally. |
+| 3D world | Done | Data-driven industrial yard map with ground, roads, buildings, trees, rocks, crates, barriers, lights, and one vehicle. |
+| Asset loading | Done | GLB registry loads Kenney assets once and instantiates placements. Missing assets fall back to simple placeholders. |
+| Roads | Done | City road tiles are in the map, scaled to tile spacing, with corrected rotations for the current demo layout. |
+| Navigation | Done | Grid navigation, explicit footprints, actor-radius padding, nearest-walkable targeting, 8-way A*, and diagonal corner-cut prevention are implemented. |
+| Terrain costs | Partial | The model exists. Current demo uses `grass = 3` via map default cost and `road = 1`; costs are clamped to at least `1` to keep the A* heuristic stable. |
+| Vehicle movement | Done | Click-to-move, waypoint following, yaw rotation, reset-to-spawn, and stuck-to-blocked handling are implemented. |
+| Collision | Done | Rapier static colliders and a kinematic vehicle collider are active. Shift-click direct movement exists as a collision test path. |
+| Debug tooling | Done | FPS, camera mode, mouse world/cell, actor state, collision state, nav grid, footprints, inspector, and route line are available. |
+| Vehicle camera | Done | Lower-right hood/inset camera renders alongside the isometric view and has its own sky layer. |
+| Deployment | Done | GitHub Actions builds, tests, uploads, and deploys the static demo to GitHub Pages. |
+| Verification | Done | Latest verified commands: `npm run test` and `BASE_PATH=/bb-lieutenants/ npm run build`. |
+
+## Sprint 1 Divergences
+
+These replace or refine assumptions in the original plan below:
+
+- The optional chase-camera toggle became an always-visible lower-right vehicle camera inset. The main camera remains the command camera.
+- Runtime route preview is not always-on planning preview; it draws the last commanded path and can be toggled with `P`.
+- Map reload is not implemented yet. `R` resets the vehicle to spawn.
+- Road preference is currently modeled with terrain cost only. Roads cost `1`, grass costs `3`; future C&C-style behavior needs per-vehicle movement profiles and probably directional/lane-aware road costs.
+- A* prevents diagonal corner-cutting through blocked cells, but it does not understand road lanes, right-side driving, traffic rules, or road direction.
+- Stuck handling stops and marks the actor as `blocked`; it does not automatically repath yet.
+- Navigation still comes from explicit map/registry footprints, not GLB mesh geometry.
+- Project structure is close to the original proposal but not identical. Some planned helper modules were folded into nearby files because the first sprint did not need the extra indirection.
+
+## Next Slice: Terrain Semantics v1
+
+Before building a map authoring tool, define the terrain model that tool will author. The map should describe physical terrain facts, not every possible vehicle class.
+
+Map-authored terrain facts should include:
+
+```text
+Height/elevation
+Surface type, such as grass, road, dirt, rock, sand, or water
+Water depth where applicable
+Optional overlays, such as road, bridge, ford, or ramp
+Static blockers from footprints
+```
+
+Vehicle movement profiles should describe how a vehicle interprets those facts:
+
+```text
+Surface movement costs
+Maximum normal slope
+Cliff/climb capability
+Water traversal capability
+Maximum water depth
+Uphill/downhill cost modifiers
+```
+
+Traversal should be calculated mostly as an edge cost, not only as a tile cost. Moving from one cell to another depends on the destination surface, height delta, slope, cliff threshold, water depth, static blockers, and the selected vehicle's movement profile.
+
+The first implementation should avoid per-click recomputation by caching derived movement data by:
+
+```text
+terrain revision + movement profile id = cached movement/edge-cost layer
+```
+
+Initial profiles:
+
+```text
+wheeled.vehicle: roads preferred, grass allowed, steep slopes blocked, water blocked
+climber.vehicle: steep/rocky terrain allowed at high cost, water blocked
+water.vehicle: water allowed, land blocked or expensive depending on craft type
+amphibious.vehicle: land and shallow water allowed, deep water optional by profile
+```
+
+Acceptance for this slice:
+
+```text
+Map schema supports height, surface, water depth, and overlays.
+Movement profiles convert terrain facts into walkability and traversal cost.
+A* accepts a movement profile or derived movement layer.
+Hills are slower uphill than flat ground for normal vehicles.
+Steep cliffs are blocked unless the profile has climb capability.
+Water is blocked unless the profile has water/amphibious capability.
+The demo includes at least one hill/cliff/water test area.
+Unit tests cover slope, cliff, water, and profile-specific traversal.
+```
+
+---
+
+Below is the original implementation-ready spec for a **first 3D isometric navigable-world POC**, updated where sprint 1 changed the shape of the demo. It deliberately excludes multiplayer, resource gameplay, AI, production UI, and economy. The goal is to prove that the rendering, asset loading, map format, navigability model, and basic movement/physics all work together.
 
 Kenney is a good fit for this slice: their 3D import guide says Kenney distributes glTF assets as **GLB**, recommends GLB for BabylonJS, and notes that isometric renders may also be included in some 3D packages. ([Kenney][1]) The City Kit Industrial page, for example, is a 3D CC0 pack with buildings/factory/warehouse-style content. ([Kenney][2])
 
@@ -89,11 +191,10 @@ Pan camera
 Zoom camera
 Rotate camera in 90° increments or free yaw
 Click ground to move the selected vehicle
-See a path preview/debug line
+See the last commanded path as a debug line
 See blocked nav cells in debug mode
-Toggle between isometric camera and optional chase camera
+See a lower-right vehicle camera inset
 Reset vehicle to spawn
-Reload map
 ```
 
 The controlled vehicle should:
@@ -104,7 +205,7 @@ Stop if no path exists
 Smoothly follow waypoints
 Rotate toward movement direction
 Not pass through solid obstacles
-Repath if it gets stuck
+Mark itself blocked if it gets stuck
 ```
 
 ---
@@ -113,30 +214,32 @@ Repath if it gets stuck
 
 The POC is complete when all of the following are true:
 
-| Area              | Acceptance criterion                                                                                    |
-| ----------------- | ------------------------------------------------------------------------------------------------------- |
-| App boot          | `npm install && npm run dev` starts a browser app through Vite.                                         |
-| Rendering         | A Babylon.js scene renders a 3D map with ground, lights, camera, and at least 15 placed static objects. |
-| Assets            | At least 3 different asset categories are loaded: building, vegetation, vehicle.                        |
-| Camera            | Default camera is orthographic/isometric and supports pan + zoom.                                       |
-| Map data          | Scene is built from a JSON map file, not hard-coded object placement.                                   |
-| Nav grid          | The app generates a nav grid from the map’s object footprints.                                          |
-| Debug overlay     | Pressing a key toggles visible blocked/walkable cells.                                                  |
-| Click-to-move     | Clicking walkable ground commands the vehicle to move there.                                            |
-| Pathfinding       | Vehicle uses A* over the nav grid and avoids blocked cells.                                             |
-| Physics/collision | Vehicle does not pass through solid obstacles.                                                          |
-| Stuck handling    | If movement is blocked for more than a short threshold, vehicle stops and logs/repaths.                 |
-| Tests             | Core nav-grid and A* functions have unit tests.                                                         |
-| Extensibility     | Map schema can later support resource nodes, player starts, unit types, and terrain costs.              |
+| Area              | Acceptance criterion                                                                                    | Sprint 1 status |
+| ----------------- | ------------------------------------------------------------------------------------------------------- | --------------- |
+| App boot          | `npm install && npm run dev` starts a browser app through Vite.                                         | Done |
+| Rendering         | A Babylon.js scene renders a 3D map with ground, lights, camera, and at least 15 placed static objects. | Done |
+| Assets            | At least 3 different asset categories are loaded: building, vegetation, vehicle.                        | Done |
+| Camera            | Default camera is orthographic/isometric and supports pan + zoom.                                       | Done |
+| Vehicle view      | A secondary vehicle view is available for inspection/debugging.                                         | Done as an inset, not a toggle |
+| Map data          | Scene is built from a JSON map file, not hard-coded object placement.                                   | Done |
+| Nav grid          | The app generates a nav grid from the map’s object footprints.                                          | Done |
+| Debug overlay     | Pressing a key toggles visible blocked/walkable cells.                                                  | Done |
+| Click-to-move     | Clicking walkable ground commands the vehicle to move there.                                            | Done |
+| Pathfinding       | Vehicle uses A* over the nav grid and avoids blocked cells.                                             | Done, without road-lane direction |
+| Physics/collision | Vehicle does not pass through solid obstacles.                                                          | Done |
+| Stuck handling    | If movement is blocked for more than a short threshold, vehicle stops and marks blocked.                | Done |
+| Tests             | Core nav-grid and A* functions have unit tests.                                                         | Done |
+| Deployment        | `main` can be built and deployed to GitHub Pages under `/bb-lieutenants/`.                              | Done |
+| Extensibility     | Map schema can later support resource nodes, player starts, unit types, and terrain costs.              | Partial; terrain costs exist, per-vehicle costs are future |
 
 ---
 
 # 6. Project structure
 
-Use this directory structure:
+The current project uses this directory structure:
 
 ```text
-poc-3d-rts-world/
+bb-lieutenants/
   package.json
   vite.config.ts
   tsconfig.json
@@ -145,8 +248,9 @@ poc-3d-rts-world/
   public/
     assets/
       kenney/
-        README.md
         city-kit-industrial/
+        city-kit-roads/
+        factory-kit/
         nature-kit/
         car-kit/
     maps/
@@ -162,13 +266,14 @@ poc-3d-rts-world/
 
     render/
       createEngine.ts
-      createScene.ts
       AssetManager.ts
       CameraController.ts
       Lighting.ts
       Ground.ts
       DebugDraw.ts
       NavGridOverlay.ts
+      RenderLayers.ts
+      VehicleCameraInset.ts
 
     map/
       MapTypes.ts
@@ -184,21 +289,19 @@ poc-3d-rts-world/
 
     physics/
       PhysicsWorld.ts
-      ColliderFactory.ts
 
     sim/
       Actor.ts
       VehicleController.ts
-      MovementTypes.ts
 
     input/
       InputController.ts
-      Picking.ts
-      Hotkeys.ts
 
     debug/
       DebugPanel.ts
-      Stats.ts
+
+    utils/
+      basePath.ts
 
     test/
       navgrid.test.ts
@@ -280,7 +383,7 @@ Example:
 ```json
 {
   "version": 1,
-  "name": "poc-industrial-yard",
+  "name": "poc-industrial-road-yard",
   "size": {
     "cellsX": 64,
     "cellsZ": 64,
@@ -288,7 +391,8 @@ Example:
   },
   "terrain": {
     "base": "grass",
-    "heightMode": "flat"
+    "heightMode": "flat",
+    "defaultCost": 3
   },
   "playerStarts": [
     {
@@ -300,7 +404,7 @@ Example:
   "placements": [
     {
       "id": "factory-01",
-      "assetId": "building.factory.small",
+      "assetId": "building.industrial.a",
       "position": { "x": 0, "y": 0, "z": 0 },
       "rotationY": 0,
       "scale": 1,
@@ -338,13 +442,16 @@ Example:
     },
     {
       "id": "road-01",
-      "assetId": "terrain.road.straight",
+      "assetId": "road.straight",
       "position": { "x": 0, "y": 0.02, "z": -20 },
       "rotationY": 1.5708,
       "scale": 1,
       "nav": {
         "blocks": false,
-        "terrainCost": 0.75
+        "shape": "rect",
+        "width": 4,
+        "depth": 8,
+        "terrainCost": 1
       },
       "physics": {
         "solid": false
@@ -355,7 +462,7 @@ Example:
     {
       "id": "scout-01",
       "type": "vehicle.scout",
-      "assetId": "vehicle.car.small",
+      "assetId": "vehicle.sedan",
       "position": { "x": -40, "y": 0, "z": -40 },
       "rotationY": 0,
       "movement": {
@@ -385,8 +492,8 @@ Example `public/asset-registry.json`:
 
 ```json
 {
-  "building.factory.small": {
-    "url": "/assets/kenney/city-kit-industrial/Models/GLB/factory.glb",
+  "building.industrial.a": {
+    "url": "/assets/kenney/city-kit-industrial/building-a.glb",
     "category": "building",
     "defaultScale": 1,
     "defaultNav": {
@@ -408,18 +515,21 @@ Example `public/asset-registry.json`:
       "padding": 0.5
     }
   },
-  "vehicle.car.small": {
-    "url": "/assets/kenney/car-kit/Models/GLB/car.glb",
+  "vehicle.sedan": {
+    "url": "/assets/kenney/car-kit/sedan.glb",
     "category": "vehicle",
     "defaultScale": 1
   },
-  "terrain.road.straight": {
-    "url": "/assets/kenney/road-kit/Models/GLB/road-straight.glb",
+  "road.straight": {
+    "url": "/assets/kenney/city-kit-roads/road-straight.glb",
     "category": "terrain",
     "defaultScale": 1,
     "defaultNav": {
       "blocks": false,
-      "terrainCost": 0.75
+      "shape": "rect",
+      "width": 4,
+      "depth": 8,
+      "terrainCost": 1
     }
   }
 }
@@ -437,7 +547,7 @@ Implement `AssetManager` with this behavior:
 class AssetManager {
   async loadRegistry(url: string): Promise<void>;
   async preloadAsset(assetId: string): Promise<void>;
-  async instantiate(assetId: string, name: string): Promise<BABYLON.TransformNode>;
+  instantiate(assetId: string, name: string): BABYLON.TransformNode;
 }
 ```
 
@@ -450,7 +560,9 @@ Requirements:
 5. Mark decorative meshes as non-pickable unless needed.
 6. Keep the ground mesh pickable for click-to-move.
 
-Use Babylon’s current loader functions rather than legacy SceneLoader patterns where possible. Babylon’s docs list `LoadAssetContainerAsync`, `AppendSceneAsync`, `LoadSceneAsync`, and `ImportMeshAsync` as module-level loading functions, and show that `.gltf` and `.glb` are supported through the loader plugin. ([GitHub][3])
+Use Babylon’s current loader functions where possible. Babylon’s docs list `LoadAssetContainerAsync`, `AppendSceneAsync`, `LoadSceneAsync`, and `ImportMeshAsync` as module-level loading functions, and show that `.gltf` and `.glb` are supported through the loader plugin. ([GitHub][3])
+
+Sprint 1 uses `SceneLoader.LoadAssetContainerAsync` for GLB container loading because it was the shortest stable route with the installed Babylon version. Revisit module-level imports later if bundle size or API churn becomes a problem.
 
 ---
 
@@ -494,7 +606,7 @@ Mouse wheel: zoom
 Q/E: rotate camera yaw
 Home: reset camera
 F: follow selected actor
-C: toggle optional chase camera
+Lower-right vehicle camera inset: always visible in the current demo
 ```
 
 Panning should be along the ground plane, not screen-space vertical movement.
@@ -509,7 +621,6 @@ P = toggle path line
 B = toggle placement footprints
 I = toggle Babylon inspector/debug layer
 R = reset vehicle
-C = toggle chase camera
 ```
 
 The Babylon Inspector is useful for this phase because it lets developers inspect the live scene, mesh hierarchy, materials, transforms, and related runtime state. Babylon describes the Inspector as a diagnostic tool for inspecting and manipulating a scene in real time. ([Babylon.js Docs][5])
@@ -551,7 +662,7 @@ Defaults:
 
 ```text
 walkable = true
-terrainCost = 1
+terrainCost = map.terrain.defaultCost if set, otherwise the current builder fallback of 1.2
 ```
 
 ## Obstacle rasterization
@@ -577,6 +688,10 @@ type NavFootprint =
     }
   | {
       blocks: false;
+      shape?: "rect" | "circle";
+      width?: number;
+      depth?: number;
+      radius?: number;
       terrainCost?: number;
     };
 ```
@@ -609,14 +724,14 @@ Terrain cost should exist in the data model now, even if used lightly.
 Examples:
 
 ```text
-road = 0.75
-grass = 1.0
-rough = 1.5
+road = 1
+grass = 3
+rough = 5
 water = blocked
 building = blocked
 ```
 
-This lets future vehicles prefer roads without requiring a new navigation architecture.
+This lets future vehicles prefer roads without requiring a new navigation architecture. Current costs are clamped to at least `1`; per-vehicle cost profiles and directional road-lane behavior are future work.
 
 ---
 
@@ -875,6 +990,8 @@ Build flow:
 export type BuiltMap = {
   map: MapDefinition;
   navGrid: NavGrid;
+  ground: BABYLON.Mesh;
+  footprintRoot: BABYLON.TransformNode;
   placements: BuiltPlacement[];
   actors: Actor[];
 };
@@ -887,7 +1004,7 @@ export type BuiltMap = {
 Create one hand-authored map:
 
 ```text
-poc-industrial-yard
+poc-industrial-road-yard
 ```
 
 It should include:
@@ -950,7 +1067,7 @@ const HOTKEYS = {
   toggleFootprints: "KeyB",
   toggleInspector: "KeyI",
   resetActor: "KeyR",
-  toggleCamera: "KeyC"
+  focusActor: "KeyF"
 };
 ```
 
@@ -981,7 +1098,7 @@ Padding expands blocked area
 Rotation is handled for rect footprints or explicitly rejected for POC
 ```
 
-For the POC, it is acceptable to support only axis-aligned rectangular footprints initially. If rotated buildings are allowed visually, their nav footprint can remain axis-aligned until a later slice.
+Sprint 1 implements rotated rectangular footprint rasterization and uses it for road/placement footprints. The first test cut still mainly covers axis-aligned rectangles, circles, padding, actor-radius expansion, and terrain cost. Add an explicit rotated-rect test in the next cleanup pass.
 
 ## `AStar`
 
@@ -1139,7 +1256,7 @@ Acceptance:
 
 ```text
 Vehicle does not visually pass through buildings or trees.
-If commanded into an impossible area, it stops or repaths.
+If commanded into an impossible area, it stops and marks itself blocked.
 ```
 
 ---
@@ -1219,6 +1336,11 @@ Physics is kinematic only.
 There is only one controllable actor.
 There is no multiplayer.
 There is no gameplay state beyond movement.
+Stuck handling stops the actor; it does not automatically repath.
+Roads have terrain costs, but no lane, direction, or right-side-driving model yet.
+Terrain has no elevation, slope, cliff, water, bridge, ford, or ramp semantics yet.
+Traversal is not yet vehicle-profile-specific.
+There is no in-app map reload; reset only returns the vehicle to spawn.
 Asset filenames depend on downloaded Kenney packs.
 ````
 
@@ -1229,6 +1351,7 @@ Asset filenames depend on downloaded Kenney packs.
 After this works, the next slices are straightforward:
 
 ```text
+Terrain semantics and movement profiles
 Map authoring tool
 Multiple selectable units
 Box selection
@@ -1241,12 +1364,13 @@ Server-authoritative multiplayer
 Unit sensors
 Attack-move
 Formation movement
-Road preference and terrain penalties
+Per-vehicle road preference and terrain penalties
+Directional road lanes/right-side driving
 Navmesh/ramp support
-Ride-along perspective camera
+Toggleable or enlarged ride-along perspective camera
 ```
 
-The important thing is that this POC already creates the foundation those systems need: world coordinates, map data, asset placement, navigability, physics boundaries, and actor movement.
+The important thing is that this POC already creates the foundation those systems need: world coordinates, map data, asset placement, navigability, physics boundaries, and actor movement. The terrain semantics slice should come before a map authoring tool so the editor authors stable physical terrain facts rather than temporary demo-only costs.
 
 ---
 
