@@ -18,6 +18,7 @@
     "vite": "latest"
   },
   "devDependencies": {
+    "playwright": "^1.60.0",
     "typescript": "latest",
     "vitest": "latest"
   }

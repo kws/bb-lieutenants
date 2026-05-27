@@ -3,9 +3,18 @@ export type Cell = {
   cz: number;
 };
 
+export type NavNode = Cell & {
+  surfaceId: string;
+};
+
 export type WorldPoint = {
   x: number;
   z: number;
+};
+
+export type NavPoint = WorldPoint & {
+  surfaceId: string;
+  y: number;
 };
 
 export type PathResult =
@@ -20,4 +29,3 @@ export type PathResult =
       reason: "start-blocked" | "target-blocked" | "no-path";
       nearestTarget?: Cell;
     };
-

@@ -116,5 +116,10 @@
     "url": "/assets/kenney/car-kit/sedan.glb",
     "category": "vehicle",
     "defaultScale": 2.5
+  },
+  "vehicle.boat.placeholder": {
+    "procedural": "boat",
+    "category": "vehicle",
+    "defaultScale": 1.4
   }
 }

@@ -11,6 +11,7 @@ export type PhysicsActorHandle = {
   rigidBody: RigidBody;
   collider: Collider;
   visualGroundY: number;
+  centerOffsetY: number;
 };
 
 export type PhysicsHandle = {
@@ -36,8 +37,8 @@ export class PhysicsWorld {
     this.world.step();
   }
 
-  createGround(width: number, depth: number): PhysicsHandle {
-    const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(0, -0.08, 0));
+  createGround(width: number, depth: number, y = -0.08): PhysicsHandle {
+    const body = this.world.createRigidBody(RAPIER.RigidBodyDesc.fixed().setTranslation(0, y, 0));
     const collider = this.world.createCollider(RAPIER.ColliderDesc.cuboid(width * 0.5, 0.08, depth * 0.5), body);
     return { collider };
   }
@@ -67,7 +68,8 @@ export class PhysicsWorld {
   }
 
   createKinematicActor(position: Vector3Data, radius: number, height: number): PhysicsActorHandle {
-    const centerY = position.y + height * 0.5 + radius;
+    const centerOffsetY = height * 0.5 + radius;
+    const centerY = position.y + centerOffsetY;
     const rigidBody = this.world.createRigidBody(
       RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(position.x, centerY, position.z),
     );
@@ -76,6 +78,7 @@ export class PhysicsWorld {
       rigidBody,
       collider,
       visualGroundY: position.y,
+      centerOffsetY,
     };
   }
 
@@ -92,6 +95,18 @@ export class PhysicsWorld {
       y: current.y + corrected.y,
       z: current.z + corrected.z,
     });
+    actor.visualGroundY = current.y + corrected.y - actor.centerOffsetY;
     return new Vector3(corrected.x, corrected.y, corrected.z);
+  }
+
+  setActorGroundPosition(actor: PhysicsActorHandle, position: Vector3Data): void {
+    const bodyPosition = {
+      x: position.x,
+      y: position.y + actor.centerOffsetY,
+      z: position.z,
+    };
+    actor.rigidBody.setNextKinematicTranslation(bodyPosition);
+    actor.rigidBody.setTranslation(bodyPosition, true);
+    actor.visualGroundY = position.y;
   }
 }

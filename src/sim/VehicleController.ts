@@ -1,7 +1,8 @@
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import type { Actor } from "./Actor";
+import type { NavPoint } from "../nav/NavTypes";
 import type { PhysicsWorld } from "../physics/PhysicsWorld";
-import type { WorldPoint } from "../nav/NavTypes";
+import type { TerrainWorld } from "../terrain/TerrainWorld";
+import type { Actor } from "./Actor";
 
 const WAYPOINT_REACHED_DISTANCE = 0.45;
 const STUCK_SPEED_EPSILON = 0.05;
@@ -11,18 +12,19 @@ export class VehicleController {
   constructor(
     readonly actor: Actor,
     private readonly physicsWorld: PhysicsWorld,
+    private readonly terrain: TerrainWorld,
   ) {}
 
-  setPath(points: WorldPoint[]): void {
-    this.actor.movement.path = points.map((point) => new Vector3(point.x, 0, point.z));
+  setPath(points: NavPoint[]): void {
+    this.actor.movement.path = points;
     this.actor.movement.currentWaypointIndex = this.actor.movement.path.length > 1 ? 1 : 0;
     this.actor.movement.state = this.actor.movement.path.length > 0 ? "moving" : "idle";
     this.actor.movement.stuckTime = 0;
     this.actor.movement.lastCollision = false;
   }
 
-  setDirectTarget(point: WorldPoint): void {
-    this.actor.movement.path = [new Vector3(point.x, 0, point.z)];
+  setDirectTarget(point: NavPoint): void {
+    this.actor.movement.path = [point];
     this.actor.movement.currentWaypointIndex = 0;
     this.actor.movement.state = "moving";
     this.actor.movement.stuckTime = 0;
@@ -30,13 +32,12 @@ export class VehicleController {
   }
 
   reset(): void {
-    const y = this.actor.physics.rigidBody.translation().y;
-    this.actor.physics.rigidBody.setNextKinematicTranslation({
+    this.actor.surfaceId = this.actor.spawnSurfaceId;
+    this.physicsWorld.setActorGroundPosition(this.actor.physics, {
       x: this.actor.spawn.x,
-      y,
+      y: this.actor.spawn.y,
       z: this.actor.spawn.z,
     });
-    this.actor.physics.rigidBody.setTranslation({ x: this.actor.spawn.x, y, z: this.actor.spawn.z }, true);
     this.actor.position.copyFrom(this.actor.spawn);
     this.actor.root.position.copyFrom(this.actor.spawn);
     this.actor.movement.path = [];
@@ -57,11 +58,13 @@ export class VehicleController {
     }
 
     const bodyTranslation = this.actor.physics.rigidBody.translation();
-    const current = new Vector3(bodyTranslation.x, 0, bodyTranslation.z);
-    const toTarget = target.subtract(current);
+    const current = new Vector3(bodyTranslation.x, this.actor.physics.visualGroundY, bodyTranslation.z);
+    const toTarget = new Vector3(target.x - current.x, 0, target.z - current.z);
     const distance = toTarget.length();
 
     if (distance <= WAYPOINT_REACHED_DISTANCE) {
+      this.actor.surfaceId = target.surfaceId;
+      this.snapToTerrain(target.surfaceId, target.x, target.z);
       movement.currentWaypointIndex += 1;
       if (movement.currentWaypointIndex >= movement.path.length) {
         movement.state = "idle";
@@ -71,14 +74,20 @@ export class VehicleController {
 
     const direction = toTarget.normalize();
     const stepDistance = Math.min(distance, movement.speed * dt);
-    const desired = direction.scale(stepDistance);
+    const nextX = current.x + direction.x * stepDistance;
+    const nextZ = current.z + direction.z * stepDistance;
+    const sample = this.terrain.sampleSurface(target.surfaceId, nextX, nextZ);
+    const nextGroundY = sample?.position.y ?? target.y;
+    const desired = new Vector3(direction.x * stepDistance, nextGroundY - current.y, direction.z * stepDistance);
     const corrected = this.physicsWorld.moveActor(this.actor.physics, desired);
     movement.lastCollision = corrected.length() + 0.001 < desired.length();
 
     const desiredYaw = Math.atan2(direction.x, direction.z);
     this.actor.rotationY = dampAngle(this.actor.rotationY, desiredYaw, movement.turnRate * dt);
+    this.actor.surfaceId = target.surfaceId;
 
-    if (desired.length() > 0 && corrected.length() / Math.max(dt, 0.0001) < STUCK_SPEED_EPSILON) {
+    const horizontalSpeed = Math.hypot(corrected.x, corrected.z) / Math.max(dt, 0.0001);
+    if (stepDistance > 0 && horizontalSpeed < STUCK_SPEED_EPSILON) {
       movement.stuckTime += dt;
       if (movement.stuckTime > STUCK_TIME_SECONDS) {
         movement.state = "blocked";
@@ -96,6 +105,16 @@ export class VehicleController {
     this.actor.root.position.copyFrom(this.actor.position);
     this.actor.root.rotationQuaternion = null;
     this.actor.root.rotation.y = this.actor.rotationY;
+  }
+
+  private snapToTerrain(surfaceId: string, x: number, z: number): void {
+    const sample = this.terrain.sampleSurface(surfaceId, x, z);
+    if (!sample) return;
+    this.physicsWorld.setActorGroundPosition(this.actor.physics, {
+      x,
+      y: sample.position.y,
+      z,
+    });
   }
 }
 

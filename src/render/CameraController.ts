@@ -42,7 +42,7 @@ export class CameraController {
   }
 
   follow(position: Vector3): void {
-    this.camera.target = new Vector3(position.x, 0, position.z);
+    this.camera.target = new Vector3(position.x, position.y, position.z);
   }
 
   resize(): void {

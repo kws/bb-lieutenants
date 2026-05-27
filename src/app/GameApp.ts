@@ -37,19 +37,26 @@ export class GameApp {
     await assetManager.loadRegistry(assetUrl("asset-registry.json"));
 
     const physicsWorld = await PhysicsWorld.create();
-    const map = await loadMap(assetUrl("maps/poc.map.json"));
+    const map = await loadMap(assetUrl("maps/terrain-poc.map.json"));
     const builtMap = await new MapBuilder(scene, assetManager, physicsWorld).build(map);
     const actor = builtMap.actors[0];
     if (!actor) throw new Error("Built map did not create an actor.");
-    const vehicleController = new VehicleController(actor, physicsWorld);
+    const vehicleController = new VehicleController(actor, physicsWorld, builtMap.terrain);
     vehicleController.syncFromPhysics();
     const vehicleCameraInset = new VehicleCameraInset(scene);
     vehicleCameraInset.update(actor);
     scene.activeCameras = [cameraController.camera, vehicleCameraInset.camera];
 
-    const navOverlay = new NavGridOverlay(scene, builtMap.navGrid);
+    const navOverlay = new NavGridOverlay(scene, builtMap.movementLayer);
     const debugDraw = new DebugDraw(scene);
-    const inputController = new InputController(scene, builtMap.navGrid, vehicleController, debugDraw, cameraController.camera);
+    const inputController = new InputController(
+      scene,
+      builtMap.terrain,
+      builtMap.movementLayer,
+      vehicleController,
+      debugDraw,
+      cameraController.camera,
+    );
     const debugPanel = new DebugPanel(this.debugElement);
 
     let pathVisible = true;
@@ -63,6 +70,7 @@ export class GameApp {
       physicsWorld.step(dt);
       vehicleController.syncFromPhysics();
       vehicleCameraInset.update(vehicleController.actor);
+      const pointerNode = inputController.getPointerNodeState();
       debugPanel.update({
         fps: engine.getFps(),
         camera: cameraController.modeLabel,
@@ -70,13 +78,17 @@ export class GameApp {
         mouseCell: inputController.pointer.cell
           ? {
               ...inputController.pointer.cell,
-              walkable: builtMap.navGrid.isWalkable(inputController.pointer.cell.cx, inputController.pointer.cell.cz),
-              blockedBy: builtMap.navGrid.isInside(inputController.pointer.cell.cx, inputController.pointer.cell.cz)
-                ? builtMap.navGrid.get(inputController.pointer.cell.cx, inputController.pointer.cell.cz).blockedBy
-                : undefined,
+              walkable: pointerNode?.walkable ?? false,
+              blockedBy: pointerNode?.blockedBy,
             }
           : undefined,
+        mouseMedium: inputController.pointer.medium,
+        mouseMaterial: inputController.pointer.material,
+        mouseWaterDepth: inputController.pointer.waterDepth,
+        mouseOverlays: inputController.pointer.overlays,
         actorId: vehicleController.actor.id,
+        actorSurfaceId: vehicleController.actor.surfaceId,
+        actorProfileId: vehicleController.actor.movement.profileId,
         actorState: vehicleController.actor.movement.state,
         pathLength: vehicleController.actor.movement.path.length,
         collision: vehicleController.actor.movement.lastCollision,

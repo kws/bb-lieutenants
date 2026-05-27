@@ -1,0 +1,362 @@
+{
+  "version": 2,
+  "name": "terrain-semantics-poc",
+  "size": { "cellsX": 32, "cellsZ": 32, "cellSize": 2 },
+  "terrain": {
+    "revision": 1,
+    "defaultSurfaceId": "ground.overworld",
+    "surfaces": [
+      {
+        "id": "ground.overworld",
+        "kind": "heightfield",
+        "cellSize": 2,
+        "cellsX": 32,
+        "cellsZ": 32,
+        "material": "grass",
+        "roughness": 1,
+        "heightRecipe": {
+          "baseY": 0,
+          "features": [
+            { "kind": "hill", "center": { "x": -18, "z": -8 }, "radius": 13, "height": 5 },
+            {
+              "kind": "ramp",
+              "area": { "xMin": -30, "xMax": -6, "zMin": 14, "zMax": 22 },
+              "axis": "x",
+              "startY": 0,
+              "endY": 4
+            },
+            {
+              "kind": "step",
+              "axis": "x",
+              "at": -4,
+              "direction": "positive",
+              "delta": 4,
+              "range": { "min": 14, "max": 22 }
+            },
+            { "kind": "basin", "center": { "x": 12, "z": -8 }, "radius": 11, "depth": 3.8 },
+            {
+              "kind": "ridge",
+              "axis": "z",
+              "center": -8,
+              "width": 2.2,
+              "height": 3.7,
+              "area": { "xMin": 4, "xMax": 20, "zMin": -11, "zMax": -5 }
+            }
+          ]
+        }
+      },
+      {
+        "id": "bridge.deck.east",
+        "kind": "deck",
+        "cellSize": 2,
+        "cellsX": 13,
+        "cellsZ": 3,
+        "origin": { "x": 0, "z": -11 },
+        "y": 2.4,
+        "material": "concrete",
+        "roughness": 0.5,
+        "approximateClearance": 2.1
+      },
+      {
+        "id": "tunnel.floor.north",
+        "kind": "tunnel",
+        "cellSize": 2,
+        "cellsX": 12,
+        "cellsZ": 3,
+        "origin": { "x": -30, "z": -11 },
+        "y": -1.8,
+        "material": "road",
+        "roughness": 0.8,
+        "approximateClearance": 2.4
+      }
+    ],
+    "waterBodies": [
+      {
+        "id": "lake.main",
+        "kind": "water",
+        "polygon": [
+          { "x": 12, "z": -21 },
+          { "x": 23, "z": -18 },
+          { "x": 27, "z": -8 },
+          { "x": 23, "z": 2 },
+          { "x": 12, "z": 5 },
+          { "x": 1, "z": 2 },
+          { "x": -3, "z": -8 },
+          { "x": 1, "z": -18 }
+        ],
+        "surface": { "mode": "constantY", "y": 0.4 },
+        "bottomSurfaceId": "ground.overworld",
+        "waterType": "fresh",
+        "navigation": { "surfaceAllowed": true, "submergedAllowed": true, "seabedAllowed": true }
+      }
+    ],
+    "volumes": [
+      {
+        "id": "tunnel.air.north",
+        "kind": "air",
+        "underground": true,
+        "floorSurfaceId": "tunnel.floor.north",
+        "approximateClearance": 2.4,
+        "polygon": [
+          { "x": -30, "z": -11 },
+          { "x": -6, "z": -11 },
+          { "x": -6, "z": -5 },
+          { "x": -30, "z": -5 }
+        ]
+      }
+    ],
+    "overlays": [
+      {
+        "id": "road.main",
+        "type": "road",
+        "surfaceId": "ground.overworld",
+        "corridor": {
+          "kind": "polyline",
+          "points": [
+            { "x": -30, "z": 18 },
+            { "x": 30, "z": 18 }
+          ],
+          "width": 4
+        },
+        "movement": { "costMultiplier": 1, "preferred": true }
+      },
+      {
+        "id": "road.approach",
+        "type": "road",
+        "surfaceId": "ground.overworld",
+        "corridor": {
+          "kind": "polyline",
+          "points": [
+            { "x": -4, "z": -8 },
+            { "x": 0, "z": -8 },
+            { "x": 26, "z": -8 },
+            { "x": 30, "z": -8 }
+          ],
+          "width": 4
+        },
+        "movement": { "costMultiplier": 1, "preferred": true }
+      },
+      {
+        "id": "road.bridge",
+        "type": "bridge-road",
+        "surfaceId": "bridge.deck.east",
+        "corridor": {
+          "kind": "polyline",
+          "points": [
+            { "x": 1, "z": -8 },
+            { "x": 25, "z": -8 }
+          ],
+          "width": 4
+        },
+        "movement": { "costMultiplier": 1, "preferred": true }
+      },
+      {
+        "id": "ford.shallow",
+        "type": "ford",
+        "surfaceId": "ground.overworld",
+        "corridor": {
+          "kind": "polyline",
+          "points": [
+            { "x": 4, "z": -8 },
+            { "x": 20, "z": -8 }
+          ],
+          "width": 4
+        },
+        "movement": { "costMultiplier": 1.4, "preferred": true }
+      },
+      {
+        "id": "road.tunnel",
+        "type": "tunnel-road",
+        "surfaceId": "tunnel.floor.north",
+        "corridor": {
+          "kind": "polyline",
+          "points": [
+            { "x": -29, "z": -8 },
+            { "x": -7, "z": -8 }
+          ],
+          "width": 4
+        },
+        "movement": { "costMultiplier": 1, "preferred": true }
+      }
+    ],
+    "portals": [
+      {
+        "id": "bridge-approach-west",
+        "kind": "bridge-approach",
+        "from": { "surfaceId": "ground.overworld", "x": 0, "z": -8 },
+        "to": { "surfaceId": "bridge.deck.east", "x": 1, "z": -8 },
+        "constraints": { "maxVehicleHeight": 5, "maxVehicleWidth": 5 },
+        "cost": 2
+      },
+      {
+        "id": "bridge-approach-east",
+        "kind": "bridge-approach",
+        "from": { "surfaceId": "ground.overworld", "x": 26, "z": -8 },
+        "to": { "surfaceId": "bridge.deck.east", "x": 25, "z": -8 },
+        "constraints": { "maxVehicleHeight": 5, "maxVehicleWidth": 5 },
+        "cost": 2
+      },
+      {
+        "id": "tunnel-mouth-west",
+        "kind": "tunnel-mouth",
+        "from": { "surfaceId": "ground.overworld", "x": -30, "z": -8 },
+        "to": { "surfaceId": "tunnel.floor.north", "x": -29, "z": -8 },
+        "constraints": { "maxVehicleHeight": 2.5, "maxVehicleWidth": 3 },
+        "cost": 2
+      },
+      {
+        "id": "tunnel-mouth-east",
+        "kind": "tunnel-mouth",
+        "from": { "surfaceId": "ground.overworld", "x": -6, "z": -8 },
+        "to": { "surfaceId": "tunnel.floor.north", "x": -7, "z": -8 },
+        "constraints": { "maxVehicleHeight": 2.5, "maxVehicleWidth": 3 },
+        "cost": 2
+      },
+      {
+        "id": "amphibious-water-west",
+        "kind": "ford-entry",
+        "from": { "surfaceId": "ground.overworld", "x": 4, "z": -8 },
+        "to": { "surfaceId": "water.lake.main.surface", "x": 5, "z": -8 },
+        "constraints": { "allowedProfiles": ["amphibious.light"] },
+        "cost": 2
+      },
+      {
+        "id": "amphibious-water-east",
+        "kind": "ford-entry",
+        "from": { "surfaceId": "ground.overworld", "x": 20, "z": -8 },
+        "to": { "surfaceId": "water.lake.main.surface", "x": 19, "z": -8 },
+        "constraints": { "allowedProfiles": ["amphibious.light"] },
+        "cost": 2
+      }
+    ]
+  },
+  "placements": [
+    {
+      "id": "road-ramp-01",
+      "assetId": "road.straight",
+      "anchor": { "kind": "surface", "surfaceId": "ground.overworld", "x": -24, "z": 18, "offsetY": 0.04 },
+      "rotationY": 1.5708
+    },
+    {
+      "id": "road-ramp-02",
+      "assetId": "road.straight",
+      "anchor": { "kind": "surface", "surfaceId": "ground.overworld", "x": -16, "z": 18, "offsetY": 0.04 },
+      "rotationY": 1.5708
+    },
+    {
+      "id": "road-ramp-03",
+      "assetId": "road.straight",
+      "anchor": { "kind": "surface", "surfaceId": "ground.overworld", "x": -8, "z": 18, "offsetY": 0.04 },
+      "rotationY": 1.5708
+    },
+    {
+      "id": "road-ramp-04",
+      "assetId": "road.straight",
+      "anchor": { "kind": "surface", "surfaceId": "ground.overworld", "x": 0, "z": 18, "offsetY": 0.04 },
+      "rotationY": 1.5708
+    },
+    {
+      "id": "road-flat-01",
+      "assetId": "road.straight",
+      "anchor": { "kind": "surface", "surfaceId": "ground.overworld", "x": 8, "z": 18, "offsetY": 0.04 },
+      "rotationY": 1.5708
+    },
+    {
+      "id": "road-flat-02",
+      "assetId": "road.straight",
+      "anchor": { "kind": "surface", "surfaceId": "ground.overworld", "x": 16, "z": 18, "offsetY": 0.04 },
+      "rotationY": 1.5708
+    },
+    {
+      "id": "road-flat-03",
+      "assetId": "road.straight",
+      "anchor": { "kind": "surface", "surfaceId": "ground.overworld", "x": 24, "z": 18, "offsetY": 0.04 },
+      "rotationY": 1.5708
+    },
+    {
+      "id": "road-bridge-01",
+      "assetId": "road.straight",
+      "anchor": { "kind": "surface", "surfaceId": "bridge.deck.east", "x": 6, "z": -8, "offsetY": 0.04 },
+      "rotationY": 1.5708
+    },
+    {
+      "id": "road-bridge-02",
+      "assetId": "road.straight",
+      "anchor": { "kind": "surface", "surfaceId": "bridge.deck.east", "x": 14, "z": -8, "offsetY": 0.04 },
+      "rotationY": 1.5708
+    },
+    {
+      "id": "road-bridge-03",
+      "assetId": "road.straight",
+      "anchor": { "kind": "surface", "surfaceId": "bridge.deck.east", "x": 22, "z": -8, "offsetY": 0.04 },
+      "rotationY": 1.5708
+    },
+    {
+      "id": "hill-warehouse",
+      "assetId": "building.industrial.b",
+      "anchor": { "kind": "surface", "surfaceId": "ground.overworld", "x": -20, "z": 1, "offsetY": 0 },
+      "nav": { "blocks": true, "shape": "rect", "width": 12, "depth": 10, "padding": 1 },
+      "physics": { "solid": true, "shape": "box", "size": { "x": 12, "y": 7, "z": 10 } }
+    },
+    {
+      "id": "lake-factory",
+      "assetId": "building.industrial.c",
+      "anchor": { "kind": "surface", "surfaceId": "ground.overworld", "x": 25, "z": 9, "offsetY": 0 },
+      "nav": { "blocks": true, "shape": "rect", "width": 10, "depth": 10, "padding": 1 },
+      "physics": { "solid": true, "shape": "box", "size": { "x": 10, "y": 7, "z": 10 } }
+    },
+    {
+      "id": "tree-hill-01",
+      "assetId": "nature.tree.oak",
+      "anchor": { "kind": "surface", "surfaceId": "ground.overworld", "x": -26, "z": -15, "offsetY": 0 }
+    },
+    {
+      "id": "tree-hill-02",
+      "assetId": "nature.tree.default",
+      "anchor": { "kind": "surface", "surfaceId": "ground.overworld", "x": -12, "z": -18, "offsetY": 0 }
+    },
+    {
+      "id": "rock-cliff-01",
+      "assetId": "nature.rock.large",
+      "anchor": { "kind": "surface", "surfaceId": "ground.overworld", "x": 2, "z": -22, "offsetY": 0 }
+    }
+  ],
+  "actors": [
+    {
+      "id": "scout-01",
+      "type": "vehicle.scout",
+      "assetId": "vehicle.sedan",
+      "anchor": { "kind": "surface", "surfaceId": "ground.overworld", "x": -28, "z": 18, "offsetY": 0 },
+      "rotationY": 1.5708,
+      "movement": { "radius": 0.9, "speed": 9, "turnRate": 8, "profileId": "wheeled.scout" },
+      "physics": { "shape": "capsule", "radius": 0.8, "height": 1.6 }
+    },
+    {
+      "id": "boat-01",
+      "type": "boat.light",
+      "assetId": "vehicle.boat.placeholder",
+      "anchor": { "kind": "waterSurface", "waterBodyId": "lake.main", "x": 12, "z": -14, "offsetY": 0 },
+      "rotationY": 0,
+      "movement": { "radius": 1.2, "speed": 7, "turnRate": 5, "profileId": "boat.light" },
+      "physics": { "shape": "capsule", "radius": 0.9, "height": 1.2 }
+    },
+    {
+      "id": "amphibious-01",
+      "type": "vehicle.amphibious",
+      "assetId": "vehicle.sedan",
+      "anchor": { "kind": "surface", "surfaceId": "ground.overworld", "x": -24, "z": 12, "offsetY": 0 },
+      "rotationY": 1.5708,
+      "movement": { "radius": 1, "speed": 7, "turnRate": 6, "profileId": "amphibious.light" },
+      "physics": { "shape": "capsule", "radius": 0.9, "height": 1.5 }
+    },
+    {
+      "id": "tall-01",
+      "type": "vehicle.tall",
+      "assetId": "vehicle.sedan",
+      "anchor": { "kind": "surface", "surfaceId": "ground.overworld", "x": -30, "z": -2, "offsetY": 0 },
+      "rotationY": 1.5708,
+      "movement": { "radius": 1.1, "speed": 6, "turnRate": 5, "profileId": "tall.vehicle" },
+      "physics": { "shape": "capsule", "radius": 0.9, "height": 2.2 }
+    }
+  ]
+}

@@ -35,6 +35,8 @@ export class AssetManager {
   async preloadAsset(assetId: string): Promise<void> {
     if (this.containers.has(assetId)) return;
     const definition = this.getDefinition(assetId);
+    if (!definition.url || definition.procedural) return;
+
     const url = assetUrl(definition.url);
 
     try {
@@ -72,9 +74,14 @@ export class AssetManager {
   private createPlaceholder(assetId: string, name: string): TransformNode {
     const definition = this.registry[assetId];
     const root = new TransformNode(name, this.scene);
-    const mesh = this.createPlaceholderMesh(definition?.category ?? "prop", name);
-    mesh.parent = root;
-    mesh.isPickable = false;
+    const meshes =
+      definition?.procedural === "boat"
+        ? this.createBoatPlaceholderMeshes(name)
+        : [this.createPlaceholderMesh(definition?.category ?? "prop", name)];
+    for (const mesh of meshes) {
+      mesh.parent = root;
+      mesh.isPickable = false;
+    }
     return root;
   }
 
@@ -90,5 +97,35 @@ export class AssetManager {
         : MeshBuilder.CreateBox(`${name}.placeholder`, { size: 1.5 }, this.scene);
     mesh.material = material;
     return mesh;
+  }
+
+  private createBoatPlaceholderMeshes(name: string): AbstractMesh[] {
+    const hullMaterial = new StandardMaterial(`${name}.boat.hull.material`, this.scene);
+    hullMaterial.diffuseColor = new Color3(0.12, 0.34, 0.48);
+    hullMaterial.specularColor = new Color3(0.06, 0.12, 0.16);
+
+    const deckMaterial = new StandardMaterial(`${name}.boat.deck.material`, this.scene);
+    deckMaterial.diffuseColor = new Color3(0.88, 0.9, 0.84);
+    deckMaterial.specularColor = new Color3(0.06, 0.06, 0.05);
+
+    const hull = MeshBuilder.CreateBox(`${name}.boat.hull`, { width: 1.35, height: 0.32, depth: 2.9 }, this.scene);
+    hull.position.y = 0.16;
+    hull.material = hullMaterial;
+
+    const bow = MeshBuilder.CreateCylinder(
+      `${name}.boat.bow`,
+      { height: 0.36, diameterTop: 0, diameterBottom: 1.35, tessellation: 4 },
+      this.scene,
+    );
+    bow.position.set(0, 0.18, 1.62);
+    bow.rotation.z = Math.PI * 0.25;
+    bow.scaling.z = 0.65;
+    bow.material = hullMaterial;
+
+    const cabin = MeshBuilder.CreateBox(`${name}.boat.cabin`, { width: 0.78, height: 0.48, depth: 0.82 }, this.scene);
+    cabin.position.set(0, 0.56, -0.28);
+    cabin.material = deckMaterial;
+
+    return [hull, bow, cabin];
   }
 }

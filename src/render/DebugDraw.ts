@@ -4,7 +4,7 @@ import { StandardMaterial } from "@babylonjs/core/Materials/standardMaterial";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { MeshBuilder } from "@babylonjs/core/Meshes/meshBuilder";
 import type { Scene } from "@babylonjs/core/scene";
-import type { WorldPoint } from "../nav/NavTypes";
+import type { NavPoint } from "../nav/NavTypes";
 import { DEBUG_LAYER_MASK } from "./RenderLayers";
 
 export class DebugDraw {
@@ -12,14 +12,14 @@ export class DebugDraw {
 
   constructor(private readonly scene: Scene) {}
 
-  drawPath(points: WorldPoint[]): void {
+  drawPath(points: NavPoint[]): void {
     this.pathMesh?.dispose();
     if (points.length < 2) return;
 
     this.pathMesh = MeshBuilder.CreateTube(
       "debug.path",
       {
-        path: points.map((point) => new Vector3(point.x, 0.35, point.z)),
+        path: points.map((point) => new Vector3(point.x, point.y + 0.35, point.z)),
         radius: 0.16,
         tessellation: 8,
         cap: Mesh.CAP_ALL,
