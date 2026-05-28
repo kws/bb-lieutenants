@@ -8,7 +8,7 @@ Latest cuts:
 
 | Commit | Status | Notes |
 | ------ | ------ | ----- |
-| `45815b9` | Done | Implemented Slice 3 multi-surface acceptance: road-over-road no-intersection tests, ramp portal routing tests, portal constraint tests, high-bridge clearance coverage, and a visible overpass crossing in the active terrain POC map. |
+| `8c28bd3` | Done | Implemented Slice 3 multi-surface acceptance: road-over-road no-intersection tests, ramp portal routing tests, portal constraint tests, high-bridge clearance coverage, and a visible overpass crossing in the active terrain POC map. |
 | `56e74a6` | Done | Added placement anchor acceptance coverage for surface, stacked-surface, water-surface, absolute, legacy, and invalid anchors. |
 | `ac5067e` | Done | Added water route acceptance coverage for deep/shallow water, boats, amphibious ford-entry portals, and disabled water-surface navigation. |
 | `f79c0eb` | Done | Implemented the terrain proof of concept: v2 map schema, `TerrainWorld`, heightfield/deck/tunnel/water surfaces, movement profiles/layers, portal-aware `SurfaceAStar`, terrain rendering/picking, vehicle Y snapping, and terrain tests. |
