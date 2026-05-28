@@ -3,7 +3,7 @@
   "name": "terrain-semantics-poc",
   "size": { "cellsX": 32, "cellsZ": 32, "cellSize": 2 },
   "terrain": {
-    "revision": 1,
+    "revision": 2,
     "defaultSurfaceId": "ground.overworld",
     "surfaces": [
       {
@@ -56,6 +56,18 @@
         "material": "concrete",
         "roughness": 0.5,
         "approximateClearance": 2.1
+      },
+      {
+        "id": "overpass.deck.main",
+        "kind": "deck",
+        "cellSize": 2,
+        "cellsX": 3,
+        "cellsZ": 10,
+        "origin": { "x": 10, "z": 8 },
+        "y": 7.2,
+        "material": "concrete",
+        "roughness": 0.5,
+        "approximateClearance": 3.2
       },
       {
         "id": "tunnel.floor.north",
@@ -151,6 +163,20 @@
         "movement": { "costMultiplier": 1, "preferred": true }
       },
       {
+        "id": "road.overpass",
+        "type": "bridge-road",
+        "surfaceId": "overpass.deck.main",
+        "corridor": {
+          "kind": "polyline",
+          "points": [
+            { "x": 13, "z": 9 },
+            { "x": 13, "z": 27 }
+          ],
+          "width": 4
+        },
+        "movement": { "costMultiplier": 1, "preferred": true }
+      },
+      {
         "id": "ford.shallow",
         "type": "ford",
         "surfaceId": "ground.overworld",
@@ -195,6 +221,22 @@
         "to": { "surfaceId": "bridge.deck.east", "x": 25, "z": -8 },
         "constraints": { "maxVehicleHeight": 5, "maxVehicleWidth": 5 },
         "cost": 2
+      },
+      {
+        "id": "overpass-ramp-north",
+        "kind": "ramp",
+        "from": { "surfaceId": "ground.overworld", "x": 13, "z": 9 },
+        "to": { "surfaceId": "overpass.deck.main", "x": 13, "z": 9 },
+        "constraints": { "maxVehicleHeight": 5, "maxVehicleWidth": 5 },
+        "cost": 3
+      },
+      {
+        "id": "overpass-ramp-south",
+        "kind": "ramp",
+        "from": { "surfaceId": "ground.overworld", "x": 13, "z": 27 },
+        "to": { "surfaceId": "overpass.deck.main", "x": 13, "z": 27 },
+        "constraints": { "maxVehicleHeight": 5, "maxVehicleWidth": 5 },
+        "cost": 3
       },
       {
         "id": "tunnel-mouth-west",
@@ -290,6 +332,24 @@
       "assetId": "road.straight",
       "anchor": { "kind": "surface", "surfaceId": "bridge.deck.east", "x": 22, "z": -8, "offsetY": 0.04 },
       "rotationY": 1.5708
+    },
+    {
+      "id": "road-overpass-01",
+      "assetId": "road.straight",
+      "anchor": { "kind": "surface", "surfaceId": "overpass.deck.main", "x": 13, "z": 10, "offsetY": 0.04 },
+      "rotationY": 0
+    },
+    {
+      "id": "road-overpass-02",
+      "assetId": "road.straight",
+      "anchor": { "kind": "surface", "surfaceId": "overpass.deck.main", "x": 13, "z": 18, "offsetY": 0.04 },
+      "rotationY": 0
+    },
+    {
+      "id": "road-overpass-03",
+      "assetId": "road.straight",
+      "anchor": { "kind": "surface", "surfaceId": "overpass.deck.main", "x": 13, "z": 26, "offsetY": 0.04 },
+      "rotationY": 0
     },
     {
       "id": "hill-warehouse",

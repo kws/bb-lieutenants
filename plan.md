@@ -8,6 +8,9 @@ Latest cuts:
 
 | Commit | Status | Notes |
 | ------ | ------ | ----- |
+| `45815b9` | Done | Implemented Slice 3 multi-surface acceptance: road-over-road no-intersection tests, ramp portal routing tests, portal constraint tests, high-bridge clearance coverage, and a visible overpass crossing in the active terrain POC map. |
+| `56e74a6` | Done | Added placement anchor acceptance coverage for surface, stacked-surface, water-surface, absolute, legacy, and invalid anchors. |
+| `ac5067e` | Done | Added water route acceptance coverage for deep/shallow water, boats, amphibious ford-entry portals, and disabled water-surface navigation. |
 | `f79c0eb` | Done | Implemented the terrain proof of concept: v2 map schema, `TerrainWorld`, heightfield/deck/tunnel/water surfaces, movement profiles/layers, portal-aware `SurfaceAStar`, terrain rendering/picking, vehicle Y snapping, and terrain tests. |
 | `8a23ea7` | Done | Added the terrain semantics rules and implementation slices for surfaces, volumes, overlays, portals, movement profiles, and edge-cost pathfinding. |
 | `00aaedb` | Done | Corrected the terrain model away from flat ground plus patches and toward named physical surfaces in 3D space. |
@@ -27,13 +30,13 @@ Latest cuts:
 | Roads | Done | City road tiles are in the map, scaled to tile spacing, with corrected rotations for the current demo layout. |
 | Navigation | Done | Sprint 1 `NavGrid`/`AStar` remains tested. The active terrain demo now uses `MovementLayer` plus `SurfaceAStar` over `surfaceId + cell` nodes. |
 | Terrain costs | Partial | Terrain materials, overlays, movement profiles, slope/step/cliff checks, water-depth checks, and portal constraints now exist. Costs are still clamped to at least `1`; road lanes/direction are future work. |
-| Terrain semantics | Partial | Active app loads `public/maps/terrain-poc.map.json` v2 with a heightfield, bridge deck, tunnel floor, water volume, overlays, portals, and placement anchors. This is still a POC, not an authoring-ready terrain system. |
+| Terrain semantics | Partial | Active app loads `public/maps/terrain-poc.map.json` v2 with a heightfield, bridge deck, overpass deck, tunnel floor, water volume, overlays, portals, and placement anchors. This is still a POC, not an authoring-ready terrain system. |
 | Vehicle movement | Done | Click-to-move, waypoint following, yaw rotation, reset-to-spawn, and stuck-to-blocked handling are implemented. |
 | Collision | Partial | Rapier static object colliders and a kinematic vehicle collider are active. Terrain physics still uses one low flat proxy collider; visual/nav terrain owns elevation. |
 | Debug tooling | Done | FPS, camera mode, mouse world/cell, actor state, collision state, nav grid, footprints, inspector, and route line are available. |
 | Vehicle camera | Done | Lower-right hood/inset camera renders alongside the isometric view and has its own sky layer. |
 | Deployment | Done | GitHub Actions builds, tests, uploads, and deploys the static demo to GitHub Pages. |
-| Verification | Done | NPM tooling confirmed fixed on 2026-05-28: `npm --version` resolves as `11.13.0`, and `npm run test` plus `BASE_PATH=/bb-lieutenants/ npm run build` pass. |
+| Verification | Done | NPM tooling confirmed fixed on 2026-05-28: `npm --version` resolves as `11.13.0`. Latest local verification after Slice 3: `npm run test` and `BASE_PATH=/bb-lieutenants/ npm run build` pass. |
 
 ## Sprint 1 Divergences
 
@@ -569,9 +572,9 @@ Current todo review after the actor-selection/cache slice:
 
 | Slice | Status | Reviewed notes |
 | ----- | ------ | -------------- |
-| 1. Terrain surface v1 | Mostly done | `TerrainWorld`, height recipes/corner heights, surface samples, normals, material lookup, custom Babylon heightfield mesh, `NavPoint.y`, slope/step/cliff edge checks, surface anchors, terrain-Y debug paths, vehicle Y snapping, and uphill-cost coverage exist. Remaining: placement anchoring acceptance tests; physics still needs real terrain colliders. |
-| 2. Water volume v1 | Partial | `WaterBody`, derived water depth, water-surface runtime surfaces, water rendering, `maxWadeDepth`/`minBoatDepth`, boat/amphibious profiles, `WaterBody.navigation.surfaceAllowed`, and runtime selection for non-scout actors exist. Remaining: shoreline derivation and stronger boat/amphibious route tests. |
-| 3. Multi-surface navigation | Partial | `surfaceId` nav nodes, multiple movement grids, bridge/tunnel surfaces, explicit portals, portal-aware A*, `MovementLayerCache`, and actor-specific runtime layers exist. Remaining: road-over-road/ramp acceptance maps and broader bridge clearance behavior. |
+| 1. Terrain surface v1 | Mostly done | `TerrainWorld`, height recipes/corner heights, surface samples, normals, material lookup, custom Babylon heightfield mesh, `NavPoint.y`, slope/step/cliff edge checks, surface anchors, terrain-Y debug paths, vehicle Y snapping, uphill-cost coverage, and placement anchoring acceptance tests exist. Remaining: physics still needs real terrain colliders. |
+| 2. Water volume v1 | Partial | `WaterBody`, derived water depth, water-surface runtime surfaces, water rendering, `maxWadeDepth`/`minBoatDepth`, boat/amphibious profiles, `WaterBody.navigation.surfaceAllowed`, runtime selection for non-scout actors, and boat/amphibious route tests exist. Remaining: shoreline derivation. |
+| 3. Multi-surface navigation | Mostly done | `surfaceId` nav nodes, multiple movement grids, bridge/tunnel/overpass surfaces, explicit portals, portal-aware A*, `MovementLayerCache`, actor-specific runtime layers, road-over-road/ramp acceptance tests, portal constraint tests, high-bridge clearance coverage, and a playable overpass crossing exist. Remaining: broader playable bridge-clearance scenarios and future road lane/direction semantics. |
 | 4. Underground/cave semantics | Partial | Tunnel floors, air-volume schema, tunnel-mouth portals, low-clearance constraints, and tall-profile rejection tests exist. Remaining: cave floor/route demo, camera/debug layer controls for underground visibility, and playable tunnel actor scenarios. |
 | 5. Underwater missions | Not started | No submerged nav layers, depth bands, seabed obstacles, submarine profile, or underwater routing yet. |
 
@@ -1948,8 +1951,6 @@ Asset filenames depend on downloaded Kenney packs.
 After the terrain POC, the next slices are:
 
 ```text
-Add remaining terrain POC acceptance tests and demo controls
-Rebalance or expand the active `terrain-poc.map.json` layout in place if feature tests need more space
 Heightfield/trimesh terrain physics collider
 Shoreline derivation and stronger water-routing demos
 Bridge/tunnel/cave camera and debug layer controls

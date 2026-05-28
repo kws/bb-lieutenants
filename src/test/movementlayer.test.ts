@@ -45,6 +45,74 @@ describe("MovementLayer", () => {
     ).toBe(true);
   });
 
+  it("keeps road-over-road routes on their authored surfaces without accidental intersections", () => {
+    const layer = createMovementLayer(new TerrainWorld(createRoadOverRoadMap({ includePortals: false })), scout);
+
+    const lowerPath = findSurfacePath(
+      layer,
+      { surfaceId: "ground.overworld", cx: 0, cz: 1 },
+      { surfaceId: "ground.overworld", cx: 4, cz: 1 },
+    );
+    const upperPath = findSurfacePath(
+      layer,
+      { surfaceId: "overpass.deck.test", cx: 0, cz: 0 },
+      { surfaceId: "overpass.deck.test", cx: 2, cz: 0 },
+    );
+    const crossSurfacePath = findSurfacePath(
+      layer,
+      { surfaceId: "ground.overworld", cx: 2, cz: 1 },
+      { surfaceId: "overpass.deck.test", cx: 1, cz: 0 },
+    );
+
+    expect(lowerPath.ok).toBe(true);
+    expect(upperPath.ok).toBe(true);
+    if (lowerPath.ok) expect(lowerPath.nodes.every((node) => node.surfaceId === "ground.overworld")).toBe(true);
+    if (upperPath.ok) expect(upperPath.nodes.every((node) => node.surfaceId === "overpass.deck.test")).toBe(true);
+    expect(crossSurfacePath).toEqual({
+      ok: false,
+      reason: "no-path",
+      nearestTarget: { surfaceId: "overpass.deck.test", cx: 1, cz: 0 },
+    });
+  });
+
+  it("routes between lower and upper roads only through authored ramp portals", () => {
+    const layer = createMovementLayer(new TerrainWorld(createRoadOverRoadMap({ includePortals: true })), scout);
+    const path = findSurfacePath(
+      layer,
+      { surfaceId: "ground.overworld", cx: 0, cz: 1 },
+      { surfaceId: "overpass.deck.test", cx: 2, cz: 0 },
+    );
+
+    expect(path.ok).toBe(true);
+    if (path.ok) {
+      expect(path.nodes).toEqual([
+        { surfaceId: "ground.overworld", cx: 0, cz: 1 },
+        { surfaceId: "overpass.deck.test", cx: 0, cz: 0 },
+        { surfaceId: "overpass.deck.test", cx: 1, cz: 0 },
+        { surfaceId: "overpass.deck.test", cx: 2, cz: 0 },
+      ]);
+    }
+  });
+
+  it("filters ramp portals by profile clearance constraints", () => {
+    const layer = createMovementLayer(
+      new TerrainWorld(createRoadOverRoadMap({ includePortals: true, portalMaxVehicleHeight: 2.5 })),
+      tall,
+    );
+    const path = findSurfacePath(
+      layer,
+      { surfaceId: "ground.overworld", cx: 0, cz: 1 },
+      { surfaceId: "overpass.deck.test", cx: 2, cz: 0 },
+    );
+
+    expect(layer.portals).toHaveLength(0);
+    expect(path).toEqual({
+      ok: false,
+      reason: "no-path",
+      nearestTarget: { surfaceId: "overpass.deck.test", cx: 2, cz: 0 },
+    });
+  });
+
   it("rejects low-clearance tunnel nodes for tall profiles", () => {
     const layer = createMovementLayer(new TerrainWorld(createStackedMap({ includePortal: true })), tall);
     const node = getMovementNode(layer, { surfaceId: "tunnel.floor.test", cx: 0, cz: 0 });
@@ -59,6 +127,13 @@ describe("MovementLayer", () => {
 
     expect(node?.walkable).toBe(false);
     expect(node?.rejection).toBe("low-clearance");
+  });
+
+  it("allows water surface nodes under bridges with enough overhead clearance", () => {
+    const layer = createMovementLayer(new TerrainWorld(createBridgeWaterMap({ deckY: 3 })), boat);
+    const node = getMovementNode(layer, { surfaceId: "water.lake.test.surface", cx: 0, cz: 0 });
+
+    expect(node?.walkable).toBe(true);
   });
 
   it("charges more for uphill edges than flat edges", () => {
@@ -286,6 +361,103 @@ function createSlopeMap(cornerHeights: number[]): MapDefinition {
   };
 }
 
+function createRoadOverRoadMap(options: { includePortals: boolean; portalMaxVehicleHeight?: number }): MapDefinition {
+  return {
+    version: 2,
+    name: "road-over-road-test",
+    size: { cellsX: 5, cellsZ: 3, cellSize: 2 },
+    terrain: {
+      revision: 1,
+      defaultSurfaceId: "ground.overworld",
+      surfaces: [
+        {
+          id: "ground.overworld",
+          kind: "heightfield",
+          cellSize: 2,
+          cellsX: 5,
+          cellsZ: 3,
+          origin: { x: 0, z: 0 },
+          cornerHeights: Array.from({ length: 24 }, () => 0),
+          material: "road",
+        },
+        {
+          id: "overpass.deck.test",
+          kind: "deck",
+          cellSize: 2,
+          cellsX: 3,
+          cellsZ: 1,
+          origin: { x: 2, z: 2 },
+          y: 3,
+          material: "concrete",
+        },
+      ],
+      waterBodies: [],
+      volumes: [],
+      overlays: [
+        {
+          id: "road.lower-test",
+          type: "road",
+          surfaceId: "ground.overworld",
+          corridor: {
+            kind: "polyline",
+            points: [
+              { x: 1, z: 3 },
+              { x: 9, z: 3 },
+            ],
+            width: 4,
+          },
+          movement: { costMultiplier: 1, preferred: true },
+        },
+        {
+          id: "road.upper-test",
+          type: "bridge-road",
+          surfaceId: "overpass.deck.test",
+          corridor: {
+            kind: "polyline",
+            points: [
+              { x: 3, z: 3 },
+              { x: 7, z: 3 },
+            ],
+            width: 4,
+          },
+          movement: { costMultiplier: 1, preferred: true },
+        },
+      ],
+      portals: options.includePortals
+        ? [
+            {
+              id: "ramp-west-test",
+              kind: "ramp",
+              from: { surfaceId: "ground.overworld", x: 1, z: 3 },
+              to: { surfaceId: "overpass.deck.test", x: 3, z: 3 },
+              constraints: { maxVehicleHeight: options.portalMaxVehicleHeight ?? 5, maxVehicleWidth: 5 },
+              cost: 2,
+            },
+            {
+              id: "ramp-east-test",
+              kind: "ramp",
+              from: { surfaceId: "ground.overworld", x: 9, z: 3 },
+              to: { surfaceId: "overpass.deck.test", x: 7, z: 3 },
+              constraints: { maxVehicleHeight: options.portalMaxVehicleHeight ?? 5, maxVehicleWidth: 5 },
+              cost: 2,
+            },
+          ]
+        : [],
+    },
+    placements: [],
+    actors: [
+      {
+        id: "actor",
+        type: "vehicle.scout",
+        assetId: "vehicle.sedan",
+        position: { x: 1, y: 0, z: 3 },
+        movement: { radius: 1, speed: 1, turnRate: 1, profileId: "wheeled.scout" },
+        physics: { shape: "capsule", radius: 1, height: 1 },
+      },
+    ],
+  };
+}
+
 function createFloodedMap(options: { bottomY: number }): MapDefinition {
   return {
     version: 2,
@@ -458,9 +630,13 @@ function createWaterNavigationMap(surfaceAllowed: boolean): MapDefinition {
 }
 
 function createLowBridgeWaterMap(): MapDefinition {
+  return createBridgeWaterMap({ deckY: 1 });
+}
+
+function createBridgeWaterMap(options: { deckY: number }): MapDefinition {
   return {
     version: 2,
-    name: "low-bridge-water-test",
+    name: "bridge-water-test",
     size: { cellsX: 1, cellsZ: 1, cellSize: 2 },
     terrain: {
       revision: 1,
@@ -483,7 +659,7 @@ function createLowBridgeWaterMap(): MapDefinition {
           cellsX: 1,
           cellsZ: 1,
           origin: { x: 0, z: 0 },
-          y: 1,
+          y: options.deckY,
           material: "concrete",
         },
       ],
