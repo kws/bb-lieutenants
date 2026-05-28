@@ -77,7 +77,7 @@ export type TerrainSurfaceDefinition =
     }
   | {
       id: string;
-      kind: "deck" | "tunnel";
+      kind: "deck" | "tunnel" | "cave";
       cellSize: number;
       cellsX: number;
       cellsZ: number;
@@ -228,7 +228,7 @@ export type PhysicsSpec =
 
 export type AssetDefinition = {
   url?: string;
-  procedural?: "boat";
+  procedural?: "boat" | "infantry";
   category: "terrain" | "building" | "vegetation" | "rock" | "vehicle" | "prop";
   defaultScale?: number;
   defaultRotationY?: number;

@@ -7,6 +7,7 @@ export type DebugPanelState = {
   mouseMaterial?: string;
   mouseWaterDepth?: number;
   mouseOverlays?: string[];
+  undergroundVisible?: boolean;
   actorId?: string;
   actorSurfaceId?: string;
   actorProfileId?: string;
@@ -44,10 +45,11 @@ export class DebugPanel {
       `Actor: ${state.actorId ?? "--"} ${state.actorState ?? ""} ${state.actorSurfaceId ?? ""} ${
         state.actorProfileId ?? ""
       }`.trim(),
+      `Underground: ${state.undergroundVisible === false ? "hidden" : "visible"}`,
       `Collision: ${state.collision ? "contact/blocked" : "clear"}`,
       `Path: ${state.pathLength ?? 0} waypoints`,
       "Controls: click unit select | click terrain move | RMB/MMB pan | wheel zoom | Q/E rotate",
-      "Debug: Shift+click collision test | G grid | P path | B footprints | I inspector | R reset",
+      "Debug: Shift+click collision test | G grid | P path | U underground | B footprints | I inspector | R reset",
     ].join("\n");
   }
 }

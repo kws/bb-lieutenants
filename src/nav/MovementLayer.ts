@@ -290,7 +290,7 @@ function getSampleRejection(
   }
 
   if (!profile.mediums.land) return "unsupported-medium";
-  if (surface.kind === "tunnel" && profile.clearance && surface.approximateClearance !== undefined) {
+  if ((surface.kind === "tunnel" || surface.kind === "cave") && profile.clearance && surface.approximateClearance !== undefined) {
     if (surface.approximateClearance < profile.clearance.minCeiling) return "low-clearance";
   }
   if (sample.waterDepth > (profile.water?.maxWadeDepth ?? 0)) return "deep-water";

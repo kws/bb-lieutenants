@@ -1,4 +1,5 @@
 import type { Camera } from "@babylonjs/core/Cameras/camera";
+import type { PickingInfo } from "@babylonjs/core/Collisions/pickingInfo";
 import type { Scene } from "@babylonjs/core/scene";
 import type { NavNode, NavPoint } from "../nav/NavTypes";
 import { findSurfacePath } from "../nav/SurfaceAStar";
@@ -112,14 +113,7 @@ export class InputController {
   }
 
   private updatePointerState(): void {
-    const pick = this.scene.pick(
-      this.scene.pointerX,
-      this.scene.pointerY,
-      (mesh) => typeof mesh.metadata?.terrainSurfaceId === "string",
-      false,
-      this.pickCamera,
-    );
-
+    const pick = this.pickTerrain();
     if (!pick?.hit || !pick.pickedPoint || typeof pick.pickedMesh?.metadata?.terrainSurfaceId !== "string") {
       this.clearPointer();
       return;
@@ -144,6 +138,28 @@ export class InputController {
     this.pointer.material = sample.material;
     this.pointer.waterDepth = sample.waterDepth;
     this.pointer.overlays = sample.overlays;
+  }
+
+  private pickTerrain(): PickingInfo | undefined {
+    const picks =
+      this.scene.multiPick(
+        this.scene.pointerX,
+        this.scene.pointerY,
+        (mesh) => typeof mesh.metadata?.terrainSurfaceId === "string",
+        this.pickCamera,
+      ) ?? [];
+    const terrainHits = picks.filter(
+      (pick) => pick.hit && pick.pickedPoint && typeof pick.pickedMesh?.metadata?.terrainSurfaceId === "string",
+    );
+    return terrainHits.find((pick) => this.shouldPreferUndergroundPick(pick)) ?? terrainHits[0];
+  }
+
+  private shouldPreferUndergroundPick(pick: PickingInfo): boolean {
+    if (pick.pickedMesh?.metadata?.terrainUnderground !== true || !pick.pickedPoint) return false;
+    const surfaceId = pick.pickedMesh.metadata.terrainSurfaceId as string;
+    const cell = this.terrain.worldToSurfaceCell(surfaceId, pick.pickedPoint.x, pick.pickedPoint.z);
+    if (!cell) return false;
+    return getMovementNode(this.getControlContext().movementLayer, { surfaceId, ...cell })?.walkable === true;
   }
 
   private clearPointer(): void {

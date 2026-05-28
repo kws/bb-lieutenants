@@ -10,6 +10,7 @@ const scout = DEFAULT_MOVEMENT_PROFILES.find((profile) => profile.id === "wheele
 const tall = DEFAULT_MOVEMENT_PROFILES.find((profile) => profile.id === "tall.vehicle") as MovementProfile;
 const boat = DEFAULT_MOVEMENT_PROFILES.find((profile) => profile.id === "boat.light") as MovementProfile;
 const amphibious = DEFAULT_MOVEMENT_PROFILES.find((profile) => profile.id === "amphibious.light") as MovementProfile;
+const infantry = DEFAULT_MOVEMENT_PROFILES.find((profile) => profile.id === "infantry") as MovementProfile;
 
 describe("MovementLayer", () => {
   it("rejects edge traversal over cliff-height deltas", () => {
@@ -119,6 +120,75 @@ describe("MovementLayer", () => {
 
     expect(node?.walkable).toBe(false);
     expect(node?.rejection).toBe("low-clearance");
+  });
+
+  it("routes infantry into cave floors only through authored portals", () => {
+    const withoutPortal = createMovementLayer(new TerrainWorld(createCaveRouteMap({ includePortals: false })), infantry);
+    const withPortal = createMovementLayer(new TerrainWorld(createCaveRouteMap({ includePortals: true })), infantry);
+
+    expect(
+      findSurfacePath(
+        withoutPortal,
+        { surfaceId: "ground.overworld", cx: 0, cz: 1 },
+        { surfaceId: "cave.floor.test", cx: 2, cz: 0 },
+      ),
+    ).toEqual({
+      ok: false,
+      reason: "no-path",
+      nearestTarget: { surfaceId: "cave.floor.test", cx: 2, cz: 0 },
+    });
+
+    const path = findSurfacePath(
+      withPortal,
+      { surfaceId: "ground.overworld", cx: 0, cz: 1 },
+      { surfaceId: "cave.floor.test", cx: 2, cz: 0 },
+    );
+
+    expect(path.ok).toBe(true);
+    if (path.ok) {
+      expect(path.nodes.some((node) => node.surfaceId === "cave.floor.test")).toBe(true);
+      expect(path.nodes.at(-1)).toEqual({ surfaceId: "cave.floor.test", cx: 2, cz: 0 });
+    }
+  });
+
+  it("keeps overlapping ground and cave cells separate without accidental intersections", () => {
+    const layer = createMovementLayer(new TerrainWorld(createCaveRouteMap({ includePortals: false })), infantry);
+    const path = findSurfacePath(
+      layer,
+      { surfaceId: "ground.overworld", cx: 2, cz: 1 },
+      { surfaceId: "cave.floor.test", cx: 1, cz: 0 },
+    );
+
+    expect(path).toEqual({
+      ok: false,
+      reason: "no-path",
+      nearestTarget: { surfaceId: "cave.floor.test", cx: 1, cz: 0 },
+    });
+  });
+
+  it("blocks tall vehicles from low cave spaces and cave-mouth portals", () => {
+    const layer = createMovementLayer(new TerrainWorld(createCaveRouteMap({ includePortals: true })), tall);
+    const node = getMovementNode(layer, { surfaceId: "cave.floor.test", cx: 1, cz: 0 });
+
+    expect(node?.walkable).toBe(false);
+    expect(node?.rejection).toBe("low-clearance");
+    expect(layer.portals).toHaveLength(0);
+  });
+
+  it("routes infantry under an impassable overworld choke through the cave", () => {
+    const layer = createMovementLayer(new TerrainWorld(createCaveRouteMap({ includePortals: true, blockGroundChoke: true })), infantry);
+    const path = findSurfacePath(
+      layer,
+      { surfaceId: "ground.overworld", cx: 0, cz: 1 },
+      { surfaceId: "ground.overworld", cx: 4, cz: 1 },
+    );
+
+    expect(path.ok).toBe(true);
+    if (path.ok) {
+      expect(path.nodes.some((node) => node.surfaceId === "cave.floor.test")).toBe(true);
+      expect(path.nodes.at(0)).toEqual({ surfaceId: "ground.overworld", cx: 0, cz: 1 });
+      expect(path.nodes.at(-1)).toEqual({ surfaceId: "ground.overworld", cx: 4, cz: 1 });
+    }
   });
 
   it("rejects water surface nodes under low overhead decks", () => {
@@ -453,6 +523,120 @@ function createRoadOverRoadMap(options: { includePortals: boolean; portalMaxVehi
         position: { x: 1, y: 0, z: 3 },
         movement: { radius: 1, speed: 1, turnRate: 1, profileId: "wheeled.scout" },
         physics: { shape: "capsule", radius: 1, height: 1 },
+      },
+    ],
+  };
+}
+
+function createCaveRouteMap(options: { includePortals: boolean; blockGroundChoke?: boolean }): MapDefinition {
+  return {
+    version: 2,
+    name: "cave-route-test",
+    size: { cellsX: 5, cellsZ: 3, cellSize: 2 },
+    terrain: {
+      revision: 1,
+      defaultSurfaceId: "ground.overworld",
+      surfaces: [
+        {
+          id: "ground.overworld",
+          kind: "heightfield",
+          cellSize: 2,
+          cellsX: 5,
+          cellsZ: 3,
+          origin: { x: 0, z: 0 },
+          cornerHeights: Array.from({ length: 24 }, () => 0),
+          material: "grass",
+        },
+        {
+          id: "cave.floor.test",
+          kind: "cave",
+          cellSize: 2,
+          cellsX: 3,
+          cellsZ: 1,
+          origin: { x: 2, z: 2 },
+          y: -3,
+          material: "rock",
+          approximateClearance: 2,
+        },
+      ],
+      waterBodies: options.blockGroundChoke
+        ? [
+            {
+              id: "flooded-choke",
+              kind: "water",
+              polygon: [
+                { x: 2, z: 0 },
+                { x: 8, z: 0 },
+                { x: 8, z: 6 },
+                { x: 2, z: 6 },
+              ],
+              surface: { mode: "constantY", y: 1 },
+              bottomSurfaceId: "ground.overworld",
+              waterType: "fresh",
+            },
+          ]
+        : [],
+      volumes: [
+        {
+          id: "cave.air.test",
+          kind: "air",
+          underground: true,
+          floorSurfaceId: "cave.floor.test",
+          approximateClearance: 2,
+          polygon: [
+            { x: 2, z: 2 },
+            { x: 8, z: 2 },
+            { x: 8, z: 4 },
+            { x: 2, z: 4 },
+          ],
+        },
+      ],
+      overlays: [
+        {
+          id: "track.cave-test",
+          type: "track",
+          surfaceId: "cave.floor.test",
+          corridor: {
+            kind: "polyline",
+            points: [
+              { x: 3, z: 3 },
+              { x: 7, z: 3 },
+            ],
+            width: 2,
+          },
+          movement: { allowedProfiles: ["infantry"], costMultiplier: 1.2, preferred: true },
+        },
+      ],
+      portals: options.includePortals
+        ? [
+            {
+              id: "cave-mouth-west-test",
+              kind: "tunnel-mouth",
+              from: { surfaceId: "ground.overworld", x: 1, z: 3 },
+              to: { surfaceId: "cave.floor.test", x: 3, z: 3 },
+              constraints: { allowedProfiles: ["infantry"], maxVehicleHeight: 2, maxVehicleWidth: 1.2 },
+              cost: 1,
+            },
+            {
+              id: "cave-mouth-east-test",
+              kind: "tunnel-mouth",
+              from: { surfaceId: "ground.overworld", x: 9, z: 3 },
+              to: { surfaceId: "cave.floor.test", x: 7, z: 3 },
+              constraints: { allowedProfiles: ["infantry"], maxVehicleHeight: 2, maxVehicleWidth: 1.2 },
+              cost: 1,
+            },
+          ]
+        : [],
+    },
+    placements: [],
+    actors: [
+      {
+        id: "infantry",
+        type: "infantry",
+        assetId: "prop.cone",
+        position: { x: 1, y: 0, z: 3 },
+        movement: { radius: 0.35, speed: 1, turnRate: 1, profileId: "infantry" },
+        physics: { shape: "capsule", radius: 0.35, height: 1 },
       },
     ],
   };

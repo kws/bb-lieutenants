@@ -74,15 +74,18 @@ export class AssetManager {
   private createPlaceholder(assetId: string, name: string): TransformNode {
     const definition = this.registry[assetId];
     const root = new TransformNode(name, this.scene);
-    const meshes =
-      definition?.procedural === "boat"
-        ? this.createBoatPlaceholderMeshes(name)
-        : [this.createPlaceholderMesh(definition?.category ?? "prop", name)];
+    const meshes = this.createPlaceholderMeshes(definition, name);
     for (const mesh of meshes) {
       mesh.parent = root;
       mesh.isPickable = false;
     }
     return root;
+  }
+
+  private createPlaceholderMeshes(definition: AssetDefinition | undefined, name: string): AbstractMesh[] {
+    if (definition?.procedural === "boat") return this.createBoatPlaceholderMeshes(name);
+    if (definition?.procedural === "infantry") return this.createInfantryPlaceholderMeshes(name);
+    return [this.createPlaceholderMesh(definition?.category ?? "prop", name)];
   }
 
   private createPlaceholderMesh(category: AssetDefinition["category"], name: string): AbstractMesh {
@@ -127,5 +130,35 @@ export class AssetManager {
     cabin.material = deckMaterial;
 
     return [hull, bow, cabin];
+  }
+
+  private createInfantryPlaceholderMeshes(name: string): AbstractMesh[] {
+    const bodyMaterial = new StandardMaterial(`${name}.infantry.body.material`, this.scene);
+    bodyMaterial.diffuseColor = new Color3(0.08, 0.28, 0.95);
+    bodyMaterial.emissiveColor = new Color3(0.02, 0.06, 0.18);
+    bodyMaterial.specularColor = new Color3(0.08, 0.08, 0.12);
+
+    const headMaterial = new StandardMaterial(`${name}.infantry.head.material`, this.scene);
+    headMaterial.diffuseColor = new Color3(0.95, 0.78, 0.48);
+    headMaterial.specularColor = new Color3(0.08, 0.06, 0.04);
+
+    const markerMaterial = new StandardMaterial(`${name}.infantry.marker.material`, this.scene);
+    markerMaterial.diffuseColor = new Color3(0.95, 0.9, 0.18);
+    markerMaterial.emissiveColor = new Color3(0.28, 0.22, 0.02);
+    markerMaterial.specularColor = Color3.Black();
+
+    const body = MeshBuilder.CreateCylinder(`${name}.infantry.body`, { diameter: 0.62, height: 1.05, tessellation: 12 }, this.scene);
+    body.position.y = 0.58;
+    body.material = bodyMaterial;
+
+    const head = MeshBuilder.CreateSphere(`${name}.infantry.head`, { diameter: 0.44, segments: 12 }, this.scene);
+    head.position.y = 1.28;
+    head.material = headMaterial;
+
+    const base = MeshBuilder.CreateCylinder(`${name}.infantry.base`, { diameter: 0.9, height: 0.08, tessellation: 24 }, this.scene);
+    base.position.y = 0.04;
+    base.material = markerMaterial;
+
+    return [base, body, head];
   }
 }

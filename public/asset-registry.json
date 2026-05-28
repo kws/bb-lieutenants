@@ -121,5 +121,10 @@
     "procedural": "boat",
     "category": "vehicle",
     "defaultScale": 1.4
+  },
+  "unit.infantry.placeholder": {
+    "procedural": "infantry",
+    "category": "vehicle",
+    "defaultScale": 1.2
   }
 }

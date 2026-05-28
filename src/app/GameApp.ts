@@ -15,6 +15,7 @@ import { DebugPanel } from "../debug/DebugPanel";
 import { VehicleCameraInset } from "../render/VehicleCameraInset";
 import { SelectionMarker } from "../render/SelectionMarker";
 import { getMovementProfile } from "../nav/MovementProfiles";
+import { setUndergroundTerrainVisible } from "../render/TerrainRenderer";
 import { assetUrl } from "../utils/basePath";
 import { GameLoop } from "./GameLoop";
 
@@ -90,9 +91,15 @@ export class GameApp {
     const debugPanel = new DebugPanel(this.debugElement);
 
     let pathVisible = true;
+    let undergroundVisible = true;
+    setUndergroundTerrainVisible(builtMap.terrainMeshes, undergroundVisible);
     this.bindHotkeys(cameraController, navOverlay, debugDraw, builtMap.footprintRoot, getSelectedController, () => {
       pathVisible = !pathVisible;
       return pathVisible;
+    }, () => {
+      undergroundVisible = !undergroundVisible;
+      setUndergroundTerrainVisible(builtMap.terrainMeshes, undergroundVisible);
+      return undergroundVisible;
     });
 
     const loop = new GameLoop((dt) => {
@@ -118,6 +125,7 @@ export class GameApp {
         mouseMaterial: inputController.pointer.material,
         mouseWaterDepth: inputController.pointer.waterDepth,
         mouseOverlays: inputController.pointer.overlays,
+        undergroundVisible,
         actorId: selectedController.actor.id,
         actorSurfaceId: selectedController.actor.surfaceId,
         actorProfileId: selectedController.actor.movement.profileId,
@@ -147,11 +155,13 @@ export class GameApp {
     footprintRoot: { isEnabled(): boolean; setEnabled(enabled: boolean): void },
     getSelectedController: () => VehicleController,
     togglePathVisible: () => boolean,
+    toggleUndergroundVisible: () => boolean,
   ): void {
     window.addEventListener("keydown", async (event) => {
       if (event.repeat) return;
       if (event.code === "KeyG") navOverlay.toggle();
       if (event.code === "KeyP") debugDraw.setPathVisible(togglePathVisible());
+      if (event.code === "KeyU") toggleUndergroundVisible();
       if (event.code === "KeyB") footprintRoot.setEnabled(!footprintRoot.isEnabled());
       if (event.code === "KeyR") getSelectedController().reset();
       if (event.code === "KeyF") cameraController.follow(getSelectedController().actor.position);

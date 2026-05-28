@@ -12,7 +12,7 @@ import type {
   WaterBody,
 } from "../map/MapTypes";
 
-export type SurfaceKind = "heightfield" | "deck" | "tunnel" | "waterSurface";
+export type SurfaceKind = "heightfield" | "deck" | "tunnel" | "cave" | "waterSurface";
 
 export type RuntimeSurface = {
   id: string;
@@ -245,7 +245,7 @@ export class TerrainWorld {
   }
 
   private heightAt(surface: RuntimeSurface, x: number, z: number): number | undefined {
-    if (surface.kind === "deck" || surface.kind === "tunnel") return surface.y;
+    if (surface.kind === "deck" || surface.kind === "tunnel" || surface.kind === "cave") return surface.y;
     if (surface.kind !== "heightfield" || !surface.cornerHeights) return undefined;
 
     const localX = (x - surface.origin.x) / surface.cellSize;
