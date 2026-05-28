@@ -46,7 +46,7 @@ export class DebugPanel {
       }`.trim(),
       `Collision: ${state.collision ? "contact/blocked" : "clear"}`,
       `Path: ${state.pathLength ?? 0} waypoints`,
-      "Controls: click move | RMB/MMB pan | wheel zoom | Q/E rotate",
+      "Controls: click unit select | click terrain move | RMB/MMB pan | wheel zoom | Q/E rotate",
       "Debug: Shift+click collision test | G grid | P path | B footprints | I inspector | R reset",
     ].join("\n");
   }

@@ -5,7 +5,8 @@ import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { Scene } from "@babylonjs/core/scene";
-import { createMovementLayer, applyFootprintToMovementLayer, type MovementLayer } from "../nav/MovementLayer";
+import type { MovementLayer } from "../nav/MovementLayer";
+import { MovementLayerCache, type MovementFootprint } from "../nav/MovementLayerCache";
 import { getMovementProfile } from "../nav/MovementProfiles";
 import { AssetManager } from "../render/AssetManager";
 import { createTerrainMeshes } from "../render/TerrainRenderer";
@@ -26,6 +27,7 @@ export type BuiltMap = {
   map: MapDefinition;
   terrain: TerrainWorld;
   movementLayer: MovementLayer;
+  movementLayerCache: MovementLayerCache;
   terrainMeshes: Mesh[];
   footprintRoot: TransformNode;
   placements: BuiltPlacement[];
@@ -52,7 +54,6 @@ export class MapBuilder {
     this.physicsWorld.createGround(worldWidth, worldDepth, -10);
 
     const primaryProfile = getMovementProfile(map, map.actors[0]?.movement.profileId);
-    const movementLayer = createMovementLayer(terrain, primaryProfile);
     const actorRadius = map.actors[0]?.movement.radius ?? primaryProfile.radius;
     const assetIds = [...map.placements.map((placement) => placement.assetId), ...map.actors.map((actor) => actor.assetId)];
     await this.assetManager.preloadAssets(assetIds);
@@ -60,6 +61,7 @@ export class MapBuilder {
     const footprintRoot = new TransformNode("debug.footprints", this.scene);
     footprintRoot.setEnabled(false);
     const placements: BuiltPlacement[] = [];
+    const movementFootprints: MovementFootprint[] = [];
 
     for (const placement of map.placements) {
       const resolved = resolveAnchor(terrain, placement.anchor, placement.position);
@@ -74,15 +76,13 @@ export class MapBuilder {
 
       const nav = placement.nav ?? definition.defaultNav;
       if (nav) {
-        applyFootprintToMovementLayer(
-          movementLayer,
-          resolved.surfaceId,
-          placement.id,
-          resolved.position,
-          nav,
-          actorRadius,
-          placementRotationY,
-        );
+        movementFootprints.push({
+          id: placement.id,
+          surfaceId: resolved.surfaceId,
+          position: resolved.position,
+          footprint: nav,
+          rotationY: placementRotationY,
+        });
         if (nav.blocks) {
           this.addFootprintDebug(footprintRoot, placement.id, resolved.position, nav, placementRotationY);
         }
@@ -110,6 +110,7 @@ export class MapBuilder {
       root.position.set(resolved.position.x, resolved.position.y, resolved.position.z);
       root.rotation.y = actorDefinition.rotationY ?? 0;
       root.scaling.setAll(scale);
+      markActorPickable(root, actorDefinition.id);
 
       const physics = this.physicsWorld.createKinematicActor(
         resolved.position,
@@ -140,10 +141,14 @@ export class MapBuilder {
       });
     }
 
+    const movementLayerCache = new MovementLayerCache(terrain, movementFootprints);
+    const movementLayer = movementLayerCache.get(primaryProfile, actorRadius);
+
     return {
       map,
       terrain,
       movementLayer,
+      movementLayerCache,
       terrainMeshes,
       footprintRoot,
       placements,
@@ -183,6 +188,13 @@ export class MapBuilder {
     mesh.material = material;
     mesh.isPickable = false;
     mesh.parent = parent;
+  }
+}
+
+function markActorPickable(root: TransformNode, actorId: string): void {
+  for (const mesh of root.getChildMeshes(false)) {
+    mesh.isPickable = true;
+    mesh.metadata = { ...(mesh.metadata ?? {}), actorId };
   }
 }
 

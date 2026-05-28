@@ -6,24 +6,31 @@ import type { Scene } from "@babylonjs/core/scene";
 import { movementIndex, type MovementLayer } from "../nav/MovementLayer";
 
 export class NavGridOverlay {
-  readonly root: TransformNode;
+  root: TransformNode;
 
-  constructor(scene: Scene, layer: MovementLayer) {
-    this.root = new TransformNode("debug.navGrid", scene);
-    const blockedMaterial = new StandardMaterial("debug.navGrid.blocked", scene);
-    blockedMaterial.diffuseColor = new Color3(0.95, 0.16, 0.12);
-    blockedMaterial.alpha = 0.34;
-    blockedMaterial.specularColor = Color3.Black();
+  constructor(
+    private readonly scene: Scene,
+    layer: MovementLayer,
+  ) {
+    this.root = this.createRoot(layer, false);
+  }
 
-    const roadMaterial = new StandardMaterial("debug.navGrid.road", scene);
-    roadMaterial.diffuseColor = new Color3(0.1, 0.58, 0.95);
-    roadMaterial.alpha = 0.18;
-    roadMaterial.specularColor = Color3.Black();
+  setLayer(layer: MovementLayer): void {
+    const enabled = this.root.isEnabled();
+    for (const mesh of this.root.getChildMeshes(false)) mesh.dispose();
+    this.root.dispose();
+    this.root = this.createRoot(layer, enabled);
+  }
 
-    const waterMaterial = new StandardMaterial("debug.navGrid.water", scene);
-    waterMaterial.diffuseColor = new Color3(0.05, 0.65, 0.85);
-    waterMaterial.alpha = 0.2;
-    waterMaterial.specularColor = Color3.Black();
+  toggle(): void {
+    this.root.setEnabled(!this.root.isEnabled());
+  }
+
+  private createRoot(layer: MovementLayer, enabled: boolean): TransformNode {
+    const root = new TransformNode("debug.navGrid", this.scene);
+    const blockedMaterial = getMaterial(this.scene, "debug.navGrid.blocked", new Color3(0.95, 0.16, 0.12), 0.34);
+    const roadMaterial = getMaterial(this.scene, "debug.navGrid.road", new Color3(0.1, 0.58, 0.95), 0.18);
+    const waterMaterial = getMaterial(this.scene, "debug.navGrid.water", new Color3(0.05, 0.65, 0.85), 0.2);
 
     for (const grid of Object.values(layer.surfaces)) {
       for (let cz = 0; cz < grid.depthCells; cz += 1) {
@@ -36,20 +43,28 @@ export class NavGridOverlay {
           const tile = MeshBuilder.CreateGround(
             `debug.navGrid.${grid.surfaceId}.${cx}.${cz}`,
             { width: grid.cellSize * 0.92, height: grid.cellSize * 0.92 },
-            scene,
+            this.scene,
           );
           tile.position.set(center.x, node.sampleY + 0.09, center.z);
           tile.material = node.walkable ? (grid.surfaceId.startsWith("water.") ? waterMaterial : roadMaterial) : blockedMaterial;
           tile.isPickable = false;
-          tile.parent = this.root;
+          tile.parent = root;
         }
       }
     }
 
-    this.root.setEnabled(false);
+    root.setEnabled(enabled);
+    return root;
   }
+}
 
-  toggle(): void {
-    this.root.setEnabled(!this.root.isEnabled());
-  }
+function getMaterial(scene: Scene, name: string, color: Color3, alpha: number): StandardMaterial {
+  const existing = scene.getMaterialByName(name);
+  if (existing instanceof StandardMaterial) return existing;
+
+  const material = new StandardMaterial(name, scene);
+  material.diffuseColor = color;
+  material.alpha = alpha;
+  material.specularColor = Color3.Black();
+  return material;
 }

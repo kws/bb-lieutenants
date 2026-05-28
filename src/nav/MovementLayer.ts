@@ -276,6 +276,8 @@ function getSampleRejection(
   sample: SurfaceSample,
 ): string | undefined {
   if (surface.kind === "waterSurface") {
+    const water = terrain.waterBodies.find((candidate) => candidate.id === surface.waterBodyId);
+    if (water?.navigation?.surfaceAllowed === false) return "surface-navigation-disabled";
     if (!profile.mediums.waterSurface) return "unsupported-medium";
     if (sample.waterDepth < (profile.water?.minBoatDepth ?? 0)) return "shallow-water";
     const overheadClearance = profile.clearance

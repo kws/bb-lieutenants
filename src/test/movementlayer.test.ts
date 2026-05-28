@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { MapDefinition, MovementProfile } from "../map/MapTypes";
 import { createMovementLayer, evaluateEdge, getMovementNode } from "../nav/MovementLayer";
+import { MovementLayerCache } from "../nav/MovementLayerCache";
 import { DEFAULT_MOVEMENT_PROFILES } from "../nav/MovementProfiles";
 import { findSurfacePath } from "../nav/SurfaceAStar";
 import { TerrainWorld } from "../terrain/TerrainWorld";
@@ -57,6 +58,46 @@ describe("MovementLayer", () => {
 
     expect(node?.walkable).toBe(false);
     expect(node?.rejection).toBe("low-clearance");
+  });
+
+  it("charges more for uphill edges than flat edges", () => {
+    const flatLayer = createMovementLayer(new TerrainWorld(createSlopeMap([0, 0, 0, 0, 0, 0])), scout);
+    const uphillLayer = createMovementLayer(new TerrainWorld(createSlopeMap([0, 0.8, 1.6, 0, 0.8, 1.6])), scout);
+
+    const flat = evaluateEdge(flatLayer, { surfaceId: "ground.overworld", cx: 0, cz: 0 }, { surfaceId: "ground.overworld", cx: 1, cz: 0 });
+    const uphill = evaluateEdge(uphillLayer, { surfaceId: "ground.overworld", cx: 0, cz: 0 }, { surfaceId: "ground.overworld", cx: 1, cz: 0 });
+
+    expect(flat.allowed).toBe(true);
+    expect(uphill.allowed).toBe(true);
+    if (flat.allowed && uphill.allowed) expect(uphill.cost).toBeGreaterThan(flat.cost);
+  });
+
+  it("honors water bodies that disable surface navigation", () => {
+    const layer = createMovementLayer(new TerrainWorld(createWaterNavigationMap(false)), boat);
+    const node = getMovementNode(layer, { surfaceId: "water.lake.test.surface", cx: 0, cz: 0 });
+
+    expect(node?.walkable).toBe(false);
+    expect(node?.rejection).toBe("surface-navigation-disabled");
+  });
+
+  it("caches movement layers per actor radius so footprint inflation is actor-specific", () => {
+    const terrain = new TerrainWorld(createStackedMap({ includePortal: false }));
+    const cache = new MovementLayerCache(terrain, [
+      {
+        id: "crate",
+        surfaceId: "ground.overworld",
+        position: { x: 3, y: 0, z: 1 },
+        footprint: { blocks: true, shape: "rect", width: 0.5, depth: 0.5 },
+        rotationY: 0,
+      },
+    ]);
+
+    const tightLayer = cache.get(scout, 0);
+    const wideLayer = cache.get(scout, 1.9);
+
+    expect(getMovementNode(tightLayer, { surfaceId: "ground.overworld", cx: 0, cz: 0 })?.walkable).toBe(true);
+    expect(getMovementNode(wideLayer, { surfaceId: "ground.overworld", cx: 0, cz: 0 })?.walkable).toBe(false);
+    expect(cache.get(scout, 1.9)).toBe(wideLayer);
   });
 });
 
@@ -124,6 +165,99 @@ function createStackedMap(options: { includePortal: boolean; cliff?: boolean }):
         assetId: "vehicle.sedan",
         position: { x: 0, y: 0, z: 0 },
         movement: { radius: 1, speed: 1, turnRate: 1, profileId: "wheeled.scout" },
+        physics: { shape: "capsule", radius: 1, height: 1 },
+      },
+    ],
+  };
+}
+
+function createSlopeMap(cornerHeights: number[]): MapDefinition {
+  return {
+    version: 2,
+    name: "slope-test",
+    size: { cellsX: 2, cellsZ: 1, cellSize: 2 },
+    terrain: {
+      revision: 1,
+      defaultSurfaceId: "ground.overworld",
+      surfaces: [
+        {
+          id: "ground.overworld",
+          kind: "heightfield",
+          cellSize: 2,
+          cellsX: 2,
+          cellsZ: 1,
+          origin: { x: 0, z: 0 },
+          cornerHeights,
+          material: "grass",
+        },
+      ],
+      waterBodies: [],
+      volumes: [],
+      overlays: [],
+      portals: [],
+    },
+    placements: [],
+    actors: [
+      {
+        id: "actor",
+        type: "vehicle.scout",
+        assetId: "vehicle.sedan",
+        position: { x: 0, y: 0, z: 0 },
+        movement: { radius: 1, speed: 1, turnRate: 1, profileId: "wheeled.scout" },
+        physics: { shape: "capsule", radius: 1, height: 1 },
+      },
+    ],
+  };
+}
+
+function createWaterNavigationMap(surfaceAllowed: boolean): MapDefinition {
+  return {
+    version: 2,
+    name: "water-navigation-test",
+    size: { cellsX: 1, cellsZ: 1, cellSize: 2 },
+    terrain: {
+      revision: 1,
+      defaultSurfaceId: "ground.overworld",
+      surfaces: [
+        {
+          id: "ground.overworld",
+          kind: "heightfield",
+          cellSize: 2,
+          cellsX: 1,
+          cellsZ: 1,
+          origin: { x: 0, z: 0 },
+          cornerHeights: [-2, -2, -2, -2],
+          material: "grass",
+        },
+      ],
+      waterBodies: [
+        {
+          id: "lake.test",
+          kind: "water",
+          polygon: [
+            { x: 0, z: 0 },
+            { x: 2, z: 0 },
+            { x: 2, z: 2 },
+            { x: 0, z: 2 },
+          ],
+          surface: { mode: "constantY", y: 0 },
+          bottomSurfaceId: "ground.overworld",
+          waterType: "fresh",
+          navigation: { surfaceAllowed, submergedAllowed: false, seabedAllowed: false },
+        },
+      ],
+      volumes: [],
+      overlays: [],
+      portals: [],
+    },
+    placements: [],
+    actors: [
+      {
+        id: "boat",
+        type: "boat.light",
+        assetId: "vehicle.sedan",
+        position: { x: 1, y: 0, z: 1 },
+        movement: { radius: 1, speed: 1, turnRate: 1, profileId: "boat.light" },
         physics: { shape: "capsule", radius: 1, height: 1 },
       },
     ],

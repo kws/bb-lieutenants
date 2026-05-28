@@ -7,6 +7,11 @@ import type { DebugDraw } from "../render/DebugDraw";
 import type { TerrainWorld } from "../terrain/TerrainWorld";
 import type { VehicleController } from "../sim/VehicleController";
 
+type ControlContext = {
+  vehicleController: VehicleController;
+  movementLayer: MovementLayer;
+};
+
 export type PointerNavState = {
   world?: NavPoint;
   cell?: NavNode;
@@ -22,8 +27,8 @@ export class InputController {
   constructor(
     private readonly scene: Scene,
     private readonly terrain: TerrainWorld,
-    private readonly movementLayer: MovementLayer,
-    private readonly vehicleController: VehicleController,
+    private readonly getControlContext: () => ControlContext,
+    private readonly selectActor: (actorId: string) => void,
     private readonly debugDraw: DebugDraw,
     private readonly pickCamera?: Camera,
   ) {
@@ -33,6 +38,12 @@ export class InputController {
 
     this.scene.onPointerDown = (_event) => {
       if (_event.button !== 0) return;
+      const actorId = this.pickActorId();
+      if (actorId) {
+        this.selectActor(actorId);
+        return;
+      }
+
       this.updatePointerState();
       if (_event.shiftKey) {
         this.issueDirectCollisionTest();
@@ -45,13 +56,14 @@ export class InputController {
   private issueDirectCollisionTest(): void {
     if (!this.pointer.world) return;
 
-    this.vehicleController.setDirectTarget(this.pointer.world);
+    const { vehicleController } = this.getControlContext();
+    vehicleController.setDirectTarget(this.pointer.world);
     this.debugDraw.drawPath([
       {
-        surfaceId: this.vehicleController.actor.surfaceId,
-        x: this.vehicleController.actor.position.x,
-        y: this.vehicleController.actor.position.y,
-        z: this.vehicleController.actor.position.z,
+        surfaceId: vehicleController.actor.surfaceId,
+        x: vehicleController.actor.position.x,
+        y: vehicleController.actor.position.y,
+        z: vehicleController.actor.position.z,
       },
       this.pointer.world,
     ]);
@@ -60,12 +72,13 @@ export class InputController {
   private issueMoveCommand(): void {
     if (!this.pointer.cell || !this.pointer.world) return;
 
-    const actor = this.vehicleController.actor;
+    const { vehicleController, movementLayer } = this.getControlContext();
+    const actor = vehicleController.actor;
     const startCell = this.terrain.worldToSurfaceCell(actor.surfaceId, actor.position.x, actor.position.z);
     if (!startCell) return;
 
     const path = findSurfacePath(
-      this.movementLayer,
+      movementLayer,
       { surfaceId: actor.surfaceId, ...startCell },
       this.pointer.cell,
       {
@@ -76,12 +89,26 @@ export class InputController {
 
     if (!path.ok) {
       console.warn(`No path: ${path.reason}`, path);
-      this.vehicleController.actor.movement.state = "blocked";
+      vehicleController.actor.movement.state = "blocked";
       return;
     }
 
-    this.vehicleController.setPath(path.points);
+    vehicleController.setPath(path.points);
     this.debugDraw.drawPath(path.points);
+  }
+
+  private pickActorId(): string | undefined {
+    const pick = this.scene.pick(
+      this.scene.pointerX,
+      this.scene.pointerY,
+      (mesh) => typeof mesh.metadata?.actorId === "string",
+      false,
+      this.pickCamera,
+    );
+
+    return pick?.hit && typeof pick.pickedMesh?.metadata?.actorId === "string"
+      ? pick.pickedMesh.metadata.actorId
+      : undefined;
   }
 
   private updatePointerState(): void {
@@ -130,7 +157,7 @@ export class InputController {
 
   getPointerNodeState(): { walkable: boolean; blockedBy?: string } | undefined {
     if (!this.pointer.cell) return undefined;
-    const node = getMovementNode(this.movementLayer, this.pointer.cell);
+    const node = getMovementNode(this.getControlContext().movementLayer, this.pointer.cell);
     if (!node) return undefined;
     return {
       walkable: node.walkable,

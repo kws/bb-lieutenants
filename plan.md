@@ -1,6 +1,6 @@
 # Build & Bungle Lieutenants Sprint Tracker
 
-Status date: 2026-05-27.
+Status date: 2026-05-28.
 
 Live main-branch target: <https://kws.github.io/bb-lieutenants/>
 
@@ -8,6 +8,10 @@ Latest cuts:
 
 | Commit | Status | Notes |
 | ------ | ------ | ----- |
+| `f79c0eb` | Done | Implemented the terrain proof of concept: v2 map schema, `TerrainWorld`, heightfield/deck/tunnel/water surfaces, movement profiles/layers, portal-aware `SurfaceAStar`, terrain rendering/picking, vehicle Y snapping, and terrain tests. |
+| `8a23ea7` | Done | Added the terrain semantics rules and implementation slices for surfaces, volumes, overlays, portals, movement profiles, and edge-cost pathfinding. |
+| `00aaedb` | Done | Corrected the terrain model away from flat ground plus patches and toward named physical surfaces in 3D space. |
+| `e4d82a0` | Done | Updated the sprint tracker after the initial deployable demo work. |
 | `43a72c4` | Done | GitHub Pages build now uses the `/bb-lieutenants/` base path, and runtime JSON/GLB asset fetches use Vite's `BASE_URL`. |
 | `3db614b` | Done | Added lower-right vehicle camera inset, isolated sky for that inset, non-blocking pointer behavior, and visible route debug tube. |
 | `3556a19` | Done | Added GitHub Pages deployment workflow and full **Build & Bungle Lieutenants** naming in project metadata. |
@@ -18,17 +22,18 @@ Latest cuts:
 | Area | Status | Notes |
 | ---- | ------ | ----- |
 | Bootable app | Done | Vite + TypeScript + Babylon app boots locally. |
-| 3D world | Done | Data-driven industrial yard map with ground, roads, buildings, trees, rocks, crates, barriers, lights, and one vehicle. |
+| 3D world | Done | Data-driven industrial yard map with terrain, roads, buildings, trees, rocks, crates, barriers, lights, and multiple demo actors. |
 | Asset loading | Done | GLB registry loads Kenney assets once and instantiates placements. Missing assets fall back to simple placeholders. |
 | Roads | Done | City road tiles are in the map, scaled to tile spacing, with corrected rotations for the current demo layout. |
-| Navigation | Done | Grid navigation, explicit footprints, actor-radius padding, nearest-walkable targeting, 8-way A*, and diagonal corner-cut prevention are implemented. |
-| Terrain costs | Partial | The model exists. Current demo uses `grass = 3` via map default cost and `road = 1`; costs are clamped to at least `1` to keep the A* heuristic stable. |
+| Navigation | Done | Sprint 1 `NavGrid`/`AStar` remains tested. The active terrain demo now uses `MovementLayer` plus `SurfaceAStar` over `surfaceId + cell` nodes. |
+| Terrain costs | Partial | Terrain materials, overlays, movement profiles, slope/step/cliff checks, water-depth checks, and portal constraints now exist. Costs are still clamped to at least `1`; road lanes/direction are future work. |
+| Terrain semantics | Partial | Active app loads `public/maps/terrain-poc.map.json` v2 with a heightfield, bridge deck, tunnel floor, water volume, overlays, portals, and placement anchors. This is still a POC, not an authoring-ready terrain system. |
 | Vehicle movement | Done | Click-to-move, waypoint following, yaw rotation, reset-to-spawn, and stuck-to-blocked handling are implemented. |
-| Collision | Done | Rapier static colliders and a kinematic vehicle collider are active. Shift-click direct movement exists as a collision test path. |
+| Collision | Partial | Rapier static object colliders and a kinematic vehicle collider are active. Terrain physics still uses one low flat proxy collider; visual/nav terrain owns elevation. |
 | Debug tooling | Done | FPS, camera mode, mouse world/cell, actor state, collision state, nav grid, footprints, inspector, and route line are available. |
 | Vehicle camera | Done | Lower-right hood/inset camera renders alongside the isometric view and has its own sky layer. |
 | Deployment | Done | GitHub Actions builds, tests, uploads, and deploys the static demo to GitHub Pages. |
-| Verification | Done | Latest verified commands: `npm run test` and `BASE_PATH=/bb-lieutenants/ npm run build`. |
+| Verification | Done | NPM tooling confirmed fixed on 2026-05-28: `npm --version` resolves as `11.13.0`, and `npm run test` plus `BASE_PATH=/bb-lieutenants/ npm run build` pass. |
 
 ## Sprint 1 Divergences
 
@@ -36,11 +41,14 @@ These replace or refine assumptions in the original plan below:
 
 - The optional chase-camera toggle became an always-visible lower-right vehicle camera inset. The main camera remains the command camera.
 - Runtime route preview is not always-on planning preview; it draws the last commanded path and can be toggled with `P`.
-- Map reload is not implemented yet. `R` resets the vehicle to spawn.
-- Road preference is currently modeled with terrain cost only. Roads cost `1`, grass costs `3`; future C&C-style behavior needs per-vehicle movement profiles and probably directional/lane-aware road costs.
+- The active demo now loads `public/maps/terrain-poc.map.json`; `public/maps/poc.map.json` remains as the legacy flat v1 map.
+- Map reload is not implemented yet. `R` resets the selected actor to spawn.
+- Road preference is now modeled through movement profiles, materials, and overlays, but multipliers are clamped to at least `1`; future C&C-style behavior still needs directional/lane-aware road costs.
 - A* prevents diagonal corner-cutting through blocked cells, but it does not understand road lanes, right-side driving, traffic rules, or road direction.
 - Stuck handling stops and marks the actor as `blocked`; it does not automatically repath yet.
-- Navigation still comes from explicit map/registry footprints, not GLB mesh geometry.
+- Navigation blockers still come from explicit map/registry footprints, not GLB mesh geometry.
+- The terrain map includes multiple actors, and runtime control follows the individually selected actor.
+- The terrain demo uses real visual/nav height, but physics terrain remains a flat proxy until heightfield/trimesh colliders are added.
 - Project structure is close to the original proposal but not identical. Some planned helper modules were folded into nearby files because the first sprint did not need the extra indirection.
 
 ## Next Slice: Terrain Semantics v1
@@ -70,22 +78,27 @@ Portal  = explicit connection between surfaces or volumes
 
 This preserves the earlier rule that the ground owns elevation, while correcting the limit of a single heightfield: one heightfield is enough for hills, ridges, shorelines, slopes, cliffs, and mountains, but not for tunnels, caves, bridges, road-over-road crossings, rail-over-road, underwater volumes, or anything where more than one traversable thing exists at the same X/Z coordinate.
 
-### Current Sprint 1 Baseline
+### Current Terrain POC Baseline
 
-The current implementation is intentionally flat:
+The current implementation is no longer flat-only:
 
 ```text
-MapDefinition version is 1.
-terrain.heightMode is "flat".
-public/maps/poc.map.json uses grass + flat + defaultCost 3.
-MapBuilder creates one flat Babylon ground and one flat Rapier ground.
-NavGrid stores X/Z cells with walkable + scalar terrainCost.
-A* cost is direction distance * destination terrainCost.
-VehicleController converts path points into Vector3(x, 0, z).
-Input picking accepts the mesh named "ground.pickable" and stores X/Z.
+Active map: public/maps/terrain-poc.map.json, MapDefinition version 2.
+Legacy map: public/maps/poc.map.json, MapDefinition version 1.
+TerrainWorld constructs heightfield, deck, tunnel, and runtime water-surface surfaces.
+TerrainRenderer renders heightfield meshes, deck/tunnel meshes, water polygons, and tunnel visual helpers.
+MovementLayer derives profile-specific surface grids from TerrainWorld samples.
+SurfaceAStar pathfinds over NavNode(surfaceId, cx, cz) and explicit portal edges.
+Movement profiles exist for wheeled.scout, boat.light, amphibious.light, tall.vehicle, and infantry.
+MapBuilder resolves absolute, surface, and waterSurface anchors.
+Objects can conform to terrain samples for placement orientation.
+Input picking targets meshes with terrainSurfaceId metadata and stores NavPoint plus medium/material/depth/overlays.
+VehicleController follows NavPoint paths and samples terrain for Y snapping.
+Physics still uses one low flat ground collider plus object colliders; no heightfield/trimesh terrain collider yet.
+Terrain POC actors can be selected individually; each selected actor uses a cached movement layer for its profile/radius.
 ```
 
-That remains acceptable for Sprint 1. The next terrain work should replace the idea that the nav grid is the world with the rule that the nav grid samples the terrain world.
+This replaces the older Sprint 1 flat baseline. The next terrain work should harden and expose these systems rather than introduce a new terrain model.
 
 ### Surface Model
 
@@ -552,6 +565,16 @@ The engine must be able to distinguish clicks on overworld ground, bridge deck, 
 
 Do not implement all of this at once.
 
+Current todo review after the actor-selection/cache slice:
+
+| Slice | Status | Reviewed notes |
+| ----- | ------ | -------------- |
+| 1. Terrain surface v1 | Mostly done | `TerrainWorld`, height recipes/corner heights, surface samples, normals, material lookup, custom Babylon heightfield mesh, `NavPoint.y`, slope/step/cliff edge checks, surface anchors, terrain-Y debug paths, vehicle Y snapping, and uphill-cost coverage exist. Remaining: placement anchoring acceptance tests; physics still needs real terrain colliders. |
+| 2. Water volume v1 | Partial | `WaterBody`, derived water depth, water-surface runtime surfaces, water rendering, `maxWadeDepth`/`minBoatDepth`, boat/amphibious profiles, `WaterBody.navigation.surfaceAllowed`, and runtime selection for non-scout actors exist. Remaining: shoreline derivation and stronger boat/amphibious route tests. |
+| 3. Multi-surface navigation | Partial | `surfaceId` nav nodes, multiple movement grids, bridge/tunnel surfaces, explicit portals, portal-aware A*, `MovementLayerCache`, and actor-specific runtime layers exist. Remaining: road-over-road/ramp acceptance maps and broader bridge clearance behavior. |
+| 4. Underground/cave semantics | Partial | Tunnel floors, air-volume schema, tunnel-mouth portals, low-clearance constraints, and tall-profile rejection tests exist. Remaining: cave floor/route demo, camera/debug layer controls for underground visibility, and playable tunnel actor scenarios. |
+| 5. Underwater missions | Not started | No submerged nav layers, depth bands, seabed obstacles, submarine profile, or underwater routing yet. |
+
 Slice 1, terrain surface v1:
 
 ```text
@@ -736,7 +759,7 @@ Trees
 Rocks
 A few buildings
 A few decorative objects
-One controllable vehicle/unit
+Multiple individually selectable demo units
 Debug nav-grid toggle
 ```
 
@@ -746,14 +769,15 @@ The user can:
 Pan camera
 Zoom camera
 Rotate camera in 90° increments or free yaw
-Click ground to move the selected vehicle
+Click a unit to select it
+Click terrain to move the selected unit
 See the last commanded path as a debug line
 See blocked nav cells in debug mode
 See a lower-right vehicle camera inset
-Reset vehicle to spawn
+Reset selected unit to spawn
 ```
 
-The controlled vehicle should:
+The selected unit should:
 
 ```text
 Path around buildings and trees
@@ -778,15 +802,15 @@ The POC is complete when all of the following are true:
 | Camera            | Default camera is orthographic/isometric and supports pan + zoom.                                       | Done |
 | Vehicle view      | A secondary vehicle view is available for inspection/debugging.                                         | Done as an inset, not a toggle |
 | Map data          | Scene is built from a JSON map file, not hard-coded object placement.                                   | Done |
-| Nav grid          | The app generates a nav grid from the map’s object footprints.                                          | Done |
+| Nav grid          | The app generates a grid navigation layer from the map’s object footprints.                             | Done; active terrain demo uses `MovementLayer` |
 | Debug overlay     | Pressing a key toggles visible blocked/walkable cells.                                                  | Done |
-| Click-to-move     | Clicking walkable ground commands the vehicle to move there.                                            | Done |
-| Pathfinding       | Vehicle uses A* over the nav grid and avoids blocked cells.                                             | Done, without road-lane direction |
+| Click-to-move     | Clicking walkable terrain commands the selected actor to move there.                                    | Done |
+| Pathfinding       | Vehicle uses A* over the nav grid and avoids blocked cells.                                             | Done; active terrain demo uses surface-aware A*, without road-lane direction |
 | Physics/collision | Vehicle does not pass through solid obstacles.                                                          | Done |
 | Stuck handling    | If movement is blocked for more than a short threshold, vehicle stops and marks blocked.                | Done |
 | Tests             | Core nav-grid and A* functions have unit tests.                                                         | Done |
 | Deployment        | `main` can be built and deployed to GitHub Pages under `/bb-lieutenants/`.                              | Done |
-| Extensibility     | Map schema can later support resource nodes, player starts, unit types, and terrain costs.              | Partial; terrain costs exist, per-vehicle costs are future |
+| Extensibility     | Map schema can later support resource nodes, player starts, unit types, and terrain costs.              | Partial; v2 terrain supports surfaces, water, volumes, overlays, portals, anchors, and movement profiles; resource/player/editor systems are future |
 
 ---
 
@@ -811,6 +835,7 @@ bb-lieutenants/
         car-kit/
     maps/
       poc.map.json
+      terrain-poc.map.json
     asset-registry.json
 
   src/
@@ -829,6 +854,8 @@ bb-lieutenants/
       DebugDraw.ts
       NavGridOverlay.ts
       RenderLayers.ts
+      TerrainRenderer.ts
+      SelectionMarker.ts
       VehicleCameraInset.ts
 
     map/
@@ -841,7 +868,14 @@ bb-lieutenants/
       NavGrid.ts
       AStar.ts
       NavTypes.ts
+      MovementProfiles.ts
+      MovementLayer.ts
+      MovementLayerCache.ts
+      SurfaceAStar.ts
       nearestWalkable.ts
+
+    terrain/
+      TerrainWorld.ts
 
     physics/
       PhysicsWorld.ts
@@ -863,6 +897,8 @@ bb-lieutenants/
       navgrid.test.ts
       astar.test.ts
       rasterizer.test.ts
+      terrainworld.test.ts
+      movementlayer.test.ts
 ```
 
 ---
@@ -1725,6 +1761,7 @@ MapTypes.ts
 MapLoader.ts
 MapBuilder.ts
 poc.map.json
+terrain-poc.map.json
 ```
 
 Acceptance:
@@ -1874,6 +1911,7 @@ Then update:
 ```text
 public/asset-registry.json
 public/maps/poc.map.json
+public/maps/terrain-poc.map.json
 ```
 
 ````
@@ -1885,19 +1923,21 @@ public/maps/poc.map.json
 The agent should explicitly document these:
 
 ```text
-Navigation is grid-based, not navmesh-based.
+Navigation is movement-grid-based, not navmesh-based.
 Footprints are manually authored; they are not inferred from GLB geometry.
-Terrain is flat.
-There are no named terrain surfaces, volumes, overlays, portals, or placement anchors yet.
+Terrain v2 has heightfields, decks, tunnel floors, water volumes, overlays, portals, and placement anchors, but it is still hand-authored POC data.
+The active terrain POC remains one maintained map for now; if it feels tight, rebalance or expand `terrain-poc.map.json` in place instead of adding a second sandbox map.
 Physics is kinematic only.
-There is only one controllable actor.
+Physics terrain still uses a flat proxy collider; no heightfield or trimesh terrain collider exists yet.
+Actors are individually selectable at runtime, but there is no box selection, multi-select, or command queue yet.
 There is no multiplayer.
 There is no gameplay state beyond movement.
 Stuck handling stops the actor; it does not automatically repath.
-Roads have terrain costs, but no lane, direction, or right-side-driving model yet.
-Terrain has no elevation, slope, cliff, water, bridge, ford, or ramp semantics yet.
-Traversal is not yet vehicle-profile-specific.
-There is no in-app map reload; reset only returns the vehicle to spawn.
+Road overlays and profile costs exist, but there is no lane, direction, or right-side-driving model yet.
+Traversal is vehicle-profile-specific; the active runtime layer follows the currently selected actor.
+There are no submerged/underwater navigation layers yet.
+There is no in-app terrain/map authoring tool.
+There is no in-app map reload; reset only returns the selected actor to spawn.
 Asset filenames depend on downloaded Kenney packs.
 ````
 
@@ -1905,17 +1945,17 @@ Asset filenames depend on downloaded Kenney packs.
 
 # 24. Future slices enabled by this POC
 
-After this works, the next slices are straightforward:
+After the terrain POC, the next slices are:
 
 ```text
-Terrain semantics and movement profiles
-Heightfield terrain surface
-Water volumes
-Multi-surface and portal navigation
-Underground/cave semantics
+Add remaining terrain POC acceptance tests and demo controls
+Rebalance or expand the active `terrain-poc.map.json` layout in place if feature tests need more space
+Heightfield/trimesh terrain physics collider
+Shoreline derivation and stronger water-routing demos
+Bridge/tunnel/cave camera and debug layer controls
 Underwater mission layers
+Submarine and seabed movement profiles
 Map authoring tool
-Multiple selectable units
 Box selection
 Command queue
 Resource nodes
@@ -1931,7 +1971,7 @@ Directional road lanes/right-side driving
 Toggleable or enlarged ride-along perspective camera
 ```
 
-The important thing is that this POC already creates the foundation those systems need: world coordinates, map data, asset placement, navigability, physics boundaries, and actor movement. The terrain semantics slice should come before a map authoring tool so the editor authors stable physical terrain facts rather than temporary demo-only costs.
+The important thing is that this POC now creates the foundation those systems need: world coordinates, v2 terrain data, asset placement, navigability, physics boundaries, and actor movement. Keep one maintained active map until the terrain model settles; if test zones need room, resize or rebalance `terrain-poc.map.json` directly instead of maintaining a second manual sandbox. Harden the terrain semantics before building a map authoring tool so the editor authors stable physical terrain facts rather than temporary demo-only costs.
 
 ---
 
@@ -1942,35 +1982,35 @@ Implement a browser-based TypeScript/Vite POC for a 3D isometric RTS-style navig
 
 Use Babylon.js for rendering and GLB asset loading. Use @babylonjs/loaders for GLB support. Use @dimforge/rapier3d-compat for basic kinematic collision. Do not implement multiplayer, economy, combat, AI, or production UI.
 
-The app must load a JSON map from public/maps/poc.map.json. The map defines size, terrain, static placements, and one actor. Static placements reference asset IDs from public/asset-registry.json. Assets are Kenney-style GLB files stored under public/assets/kenney/.
+The app must load the active JSON terrain map from public/maps/terrain-poc.map.json. The legacy flat public/maps/poc.map.json may remain as a v1 compatibility map. The active map defines size, terrain surfaces, water bodies, volumes, transport overlays, portals, static placements, and multiple actors. Static placements reference asset IDs from public/asset-registry.json. Assets are Kenney-style GLB files stored under public/assets/kenney/.
 
 Implement:
 - Babylon engine/scene setup.
 - Orthographic isometric RTS camera with pan and zoom.
 - AssetManager that loads each GLB once and instantiates it.
 - MapLoader and MapBuilder that construct the scene from JSON.
-- NavGrid generated from manually authored placement footprints.
-- A* pathfinding over the nav grid with 8-way movement and no diagonal corner-cutting.
-- Click-to-move by ray-picking the ground.
-- One controllable vehicle actor that follows computed paths.
-- Basic Rapier static colliders for obstacles and kinematic collider for the vehicle.
+- Movement layers generated from terrain surfaces and manually authored placement footprints.
+- Surface-aware A* pathfinding over `surfaceId + cell` nodes with 8-way movement, no diagonal corner-cutting, and explicit portal edges.
+- Click-to-move by ray-picking terrain surfaces.
+- Selectable actor control with cached actor-specific movement layers.
+- Basic Rapier static colliders for obstacles and kinematic colliders for actors.
 - Debug overlays for nav grid, path, actor state, and mouse cell.
-- Vitest tests for NavGrid, footprint rasterization, and A*.
+- Vitest tests for NavGrid, footprint rasterization, A*, TerrainWorld, MovementLayer, and SurfaceAStar.
 
 Acceptance:
 - npm install && npm run dev starts the app.
-- A 3D isometric map renders with buildings, trees, roads/decorations, and one vehicle.
+- A 3D isometric terrain map renders with buildings, trees, roads/decorations, bridge/tunnel/water surfaces, and multiple actors.
 - The map is data-driven from JSON.
-- The nav grid marks buildings/trees as blocked.
+- Movement layers mark buildings/trees as blocked according to actor radius/profile.
 - Pressing G toggles nav-grid debug.
-- Clicking walkable ground moves the vehicle there.
-- The vehicle paths around obstacles.
-- The vehicle does not pass through solid objects.
+- Clicking a unit selects it; clicking walkable terrain commands the selected actor.
+- Selected actors path around obstacles according to their movement profile.
+- Actors do not pass through solid objects.
 - Core navigation logic has tests.
 - README documents setup, controls, asset folder layout, map format, and limitations.
 ```
 
-My recommendation is to keep this POC brutally focused: **one map, one actor, grid navigation, GLB assets, isometric camera, basic collision**. Once that feels good, the multiplayer/backend decision becomes much lower-risk because there will be an actual simulation and map model to host.
+My recommendation is to keep this POC focused on **one map, selectable actors, terrain-derived movement grids, GLB assets, isometric camera, and basic collision**. Harden terrain semantics and runtime controls before taking on economy, combat, multiplayer, or the map editor.
 
 [1]: https://kenney.nl/knowledge-base/game-assets-3d/importing-3d-models-into-game-engines "https://kenney.nl/knowledge-base/game-assets-3d/importing-3d-models-into-game-engines"
 [2]: https://kenney.nl/assets/city-kit-industrial "https://kenney.nl/assets/city-kit-industrial"
