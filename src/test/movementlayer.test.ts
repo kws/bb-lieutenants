@@ -4,11 +4,12 @@ import { createMovementLayer, evaluateEdge, getMovementNode } from "../nav/Movem
 import { MovementLayerCache } from "../nav/MovementLayerCache";
 import { DEFAULT_MOVEMENT_PROFILES } from "../nav/MovementProfiles";
 import { findSurfacePath } from "../nav/SurfaceAStar";
-import { TerrainWorld } from "../terrain/TerrainWorld";
+import { TerrainWorld, waterSurfaceId } from "../terrain/TerrainWorld";
 
 const scout = DEFAULT_MOVEMENT_PROFILES.find((profile) => profile.id === "wheeled.scout") as MovementProfile;
 const tall = DEFAULT_MOVEMENT_PROFILES.find((profile) => profile.id === "tall.vehicle") as MovementProfile;
 const boat = DEFAULT_MOVEMENT_PROFILES.find((profile) => profile.id === "boat.light") as MovementProfile;
+const amphibious = DEFAULT_MOVEMENT_PROFILES.find((profile) => profile.id === "amphibious.light") as MovementProfile;
 
 describe("MovementLayer", () => {
   it("rejects edge traversal over cliff-height deltas", () => {
@@ -78,6 +79,81 @@ describe("MovementLayer", () => {
 
     expect(node?.walkable).toBe(false);
     expect(node?.rejection).toBe("surface-navigation-disabled");
+  });
+
+  it("blocks wheeled scouts from deep water on the bottom surface", () => {
+    const layer = createMovementLayer(new TerrainWorld(createFloodedMap({ bottomY: -1 })), scout);
+    const node = getMovementNode(layer, { surfaceId: "ground.overworld", cx: 0, cz: 0 });
+
+    expect(node?.walkable).toBe(false);
+    expect(node?.rejection).toBe("deep-water");
+  });
+
+  it("allows wheeled scouts through shallow ford-depth water", () => {
+    const layer = createMovementLayer(new TerrainWorld(createFloodedMap({ bottomY: -0.4 })), scout);
+    const node = getMovementNode(layer, { surfaceId: "ground.overworld", cx: 0, cz: 0 });
+
+    expect(node?.walkable).toBe(true);
+    expect(node?.waterDepth).toBeCloseTo(0.4);
+  });
+
+  it("routes boats across deep water surface cells", () => {
+    const layer = createMovementLayer(new TerrainWorld(createWaterRouteMap({ includePortal: false })), boat);
+    const path = findSurfacePath(
+      layer,
+      { surfaceId: waterSurfaceId("lake.test"), cx: 1, cz: 0 },
+      { surfaceId: waterSurfaceId("lake.test"), cx: 2, cz: 0 },
+    );
+
+    expect(path.ok).toBe(true);
+    if (path.ok) {
+      expect(path.nodes.map((node) => node.surfaceId)).toEqual([waterSurfaceId("lake.test"), waterSurfaceId("lake.test")]);
+      expect(path.points.every((point) => point.surfaceId === waterSurfaceId("lake.test"))).toBe(true);
+    }
+  });
+
+  it("blocks boats from land targets and shallow water", () => {
+    const deepLayer = createMovementLayer(new TerrainWorld(createWaterRouteMap({ includePortal: false })), boat);
+    const landTarget = findSurfacePath(
+      deepLayer,
+      { surfaceId: waterSurfaceId("lake.test"), cx: 1, cz: 0 },
+      { surfaceId: "ground.overworld", cx: 0, cz: 0 },
+    );
+    const shallowLayer = createMovementLayer(new TerrainWorld(createFloodedMap({ bottomY: -0.4 })), boat);
+    const shallowNode = getMovementNode(shallowLayer, { surfaceId: waterSurfaceId("lake.test"), cx: 0, cz: 0 });
+
+    expect(landTarget).toEqual({ ok: false, reason: "target-blocked" });
+    expect(shallowNode?.walkable).toBe(false);
+    expect(shallowNode?.rejection).toBe("shallow-water");
+  });
+
+  it("routes amphibious units between land and water through explicit ford-entry portals", () => {
+    const layer = createMovementLayer(new TerrainWorld(createWaterRouteMap({ includePortal: true })), amphibious);
+    const path = findSurfacePath(
+      layer,
+      { surfaceId: "ground.overworld", cx: 0, cz: 0 },
+      { surfaceId: waterSurfaceId("lake.test"), cx: 2, cz: 0 },
+    );
+
+    expect(path.ok).toBe(true);
+    if (path.ok) {
+      expect(path.nodes).toEqual([
+        { surfaceId: "ground.overworld", cx: 0, cz: 0 },
+        { surfaceId: waterSurfaceId("lake.test"), cx: 1, cz: 0 },
+        { surfaceId: waterSurfaceId("lake.test"), cx: 2, cz: 0 },
+      ]);
+    }
+  });
+
+  it("does not generate amphibious shoreline transitions without an explicit portal", () => {
+    const layer = createMovementLayer(new TerrainWorld(createWaterRouteMap({ includePortal: false })), amphibious);
+    const path = findSurfacePath(
+      layer,
+      { surfaceId: "ground.overworld", cx: 0, cz: 0 },
+      { surfaceId: waterSurfaceId("lake.test"), cx: 2, cz: 0 },
+    );
+
+    expect(path).toEqual({ ok: false, reason: "no-path", nearestTarget: { surfaceId: waterSurfaceId("lake.test"), cx: 2, cz: 0 } });
   });
 
   it("caches movement layers per actor radius so footprint inflation is actor-specific", () => {
@@ -204,6 +280,123 @@ function createSlopeMap(cornerHeights: number[]): MapDefinition {
         assetId: "vehicle.sedan",
         position: { x: 0, y: 0, z: 0 },
         movement: { radius: 1, speed: 1, turnRate: 1, profileId: "wheeled.scout" },
+        physics: { shape: "capsule", radius: 1, height: 1 },
+      },
+    ],
+  };
+}
+
+function createFloodedMap(options: { bottomY: number }): MapDefinition {
+  return {
+    version: 2,
+    name: "flooded-test",
+    size: { cellsX: 1, cellsZ: 1, cellSize: 2 },
+    terrain: {
+      revision: 1,
+      defaultSurfaceId: "ground.overworld",
+      surfaces: [
+        {
+          id: "ground.overworld",
+          kind: "heightfield",
+          cellSize: 2,
+          cellsX: 1,
+          cellsZ: 1,
+          origin: { x: 0, z: 0 },
+          cornerHeights: [options.bottomY, options.bottomY, options.bottomY, options.bottomY],
+          material: "grass",
+        },
+      ],
+      waterBodies: [
+        {
+          id: "lake.test",
+          kind: "water",
+          polygon: [
+            { x: 0, z: 0 },
+            { x: 2, z: 0 },
+            { x: 2, z: 2 },
+            { x: 0, z: 2 },
+          ],
+          surface: { mode: "constantY", y: 0 },
+          bottomSurfaceId: "ground.overworld",
+          waterType: "fresh",
+        },
+      ],
+      volumes: [],
+      overlays: [],
+      portals: [],
+    },
+    placements: [],
+    actors: [
+      {
+        id: "actor",
+        type: "vehicle.scout",
+        assetId: "vehicle.sedan",
+        position: { x: 1, y: 0, z: 1 },
+        movement: { radius: 1, speed: 1, turnRate: 1, profileId: "wheeled.scout" },
+        physics: { shape: "capsule", radius: 1, height: 1 },
+      },
+    ],
+  };
+}
+
+function createWaterRouteMap(options: { includePortal: boolean }): MapDefinition {
+  return {
+    version: 2,
+    name: "water-route-test",
+    size: { cellsX: 3, cellsZ: 1, cellSize: 2 },
+    terrain: {
+      revision: 1,
+      defaultSurfaceId: "ground.overworld",
+      surfaces: [
+        {
+          id: "ground.overworld",
+          kind: "heightfield",
+          cellSize: 2,
+          cellsX: 3,
+          cellsZ: 1,
+          origin: { x: 0, z: 0 },
+          cornerHeights: [0, -2, -2, -2, 0, -2, -2, -2],
+          material: "grass",
+        },
+      ],
+      waterBodies: [
+        {
+          id: "lake.test",
+          kind: "water",
+          polygon: [
+            { x: 2, z: 0 },
+            { x: 6, z: 0 },
+            { x: 6, z: 2 },
+            { x: 2, z: 2 },
+          ],
+          surface: { mode: "constantY", y: 0 },
+          bottomSurfaceId: "ground.overworld",
+          waterType: "fresh",
+        },
+      ],
+      volumes: [],
+      overlays: [],
+      portals: options.includePortal
+        ? [
+            {
+              id: "ford-entry-test",
+              kind: "ford-entry",
+              from: { surfaceId: "ground.overworld", x: 1, z: 1 },
+              to: { surfaceId: waterSurfaceId("lake.test"), x: 3, z: 1 },
+              constraints: { allowedProfiles: ["amphibious.light"] },
+              cost: 2,
+            },
+          ]
+        : [],
+    },
+    placements: [],
+    actors: [
+      {
+        id: "amphibious",
+        type: "vehicle.amphibious",
+        assetId: "vehicle.sedan",
+        position: { x: 1, y: 0, z: 1 },
+        movement: { radius: 1, speed: 1, turnRate: 1, profileId: "amphibious.light" },
         physics: { shape: "capsule", radius: 1, height: 1 },
       },
     ],
