@@ -11,7 +11,7 @@ import { getMovementProfile } from "../nav/MovementProfiles";
 import { AssetManager } from "../render/AssetManager";
 import { createTerrainMeshes } from "../render/TerrainRenderer";
 import { PhysicsWorld } from "../physics/PhysicsWorld";
-import { TerrainWorld, waterSurfaceId } from "../terrain/TerrainWorld";
+import { TerrainWorld } from "../terrain/TerrainWorld";
 import type { Actor } from "../sim/Actor";
 import type {
   AssetDefinition,
@@ -19,9 +19,9 @@ import type {
   FoundationMode,
   MapDefinition,
   NavFootprint,
-  PlacementAnchor,
   Vector3Data,
 } from "./MapTypes";
+import { resolvePlacementAnchor, type ResolvedPlacementAnchor } from "./PlacementAnchors";
 
 export type BuiltMap = {
   map: MapDefinition;
@@ -32,11 +32,6 @@ export type BuiltMap = {
   footprintRoot: TransformNode;
   placements: BuiltPlacement[];
   actors: Actor[];
-};
-
-type ResolvedAnchor = {
-  position: Vector3Data;
-  surfaceId: string;
 };
 
 export class MapBuilder {
@@ -64,7 +59,7 @@ export class MapBuilder {
     const movementFootprints: MovementFootprint[] = [];
 
     for (const placement of map.placements) {
-      const resolved = resolveAnchor(terrain, placement.anchor, placement.position);
+      const resolved = resolvePlacementAnchor(terrain, placement.anchor, placement.position);
       const definition = this.assetManager.getDefinition(placement.assetId);
       const root = this.assetManager.instantiate(placement.assetId, placement.id);
       const scale = (definition.defaultScale ?? 1) * (placement.scale ?? 1);
@@ -102,7 +97,7 @@ export class MapBuilder {
 
     const actors: Actor[] = [];
     for (const actorDefinition of map.actors) {
-      const resolved = resolveAnchor(terrain, actorDefinition.anchor, actorDefinition.position);
+      const resolved = resolvePlacementAnchor(terrain, actorDefinition.anchor, actorDefinition.position);
       const profile = getMovementProfile(map, actorDefinition.movement.profileId);
       const definition = this.assetManager.getDefinition(actorDefinition.assetId);
       const root = this.assetManager.instantiate(actorDefinition.assetId, actorDefinition.id);
@@ -198,40 +193,10 @@ function markActorPickable(root: TransformNode, actorId: string): void {
   }
 }
 
-function resolveAnchor(terrain: TerrainWorld, anchor: PlacementAnchor | undefined, position: Vector3Data | undefined): ResolvedAnchor {
-  if (anchor?.kind === "absolute") {
-    const sample = terrain.sampleBestSurface(anchor.position.x, anchor.position.z);
-    return { position: anchor.position, surfaceId: sample?.surfaceId ?? terrain.defaultSurfaceId };
-  }
-
-  if (anchor?.kind === "surface") {
-    const sample = terrain.sampleSurface(anchor.surfaceId, anchor.x, anchor.z);
-    if (!sample) throw new Error(`Surface anchor is outside surface ${anchor.surfaceId}: ${anchor.x},${anchor.z}`);
-    return {
-      position: { x: anchor.x, y: sample.position.y + (anchor.offsetY ?? 0), z: anchor.z },
-      surfaceId: anchor.surfaceId,
-    };
-  }
-
-  if (anchor?.kind === "waterSurface") {
-    const surfaceId = waterSurfaceId(anchor.waterBodyId);
-    const sample = terrain.sampleSurface(surfaceId, anchor.x, anchor.z);
-    if (!sample) throw new Error(`Water anchor is outside water body ${anchor.waterBodyId}: ${anchor.x},${anchor.z}`);
-    return {
-      position: { x: anchor.x, y: sample.position.y + (anchor.offsetY ?? 0), z: anchor.z },
-      surfaceId,
-    };
-  }
-
-  if (!position) throw new Error("Map item must define either position or anchor.");
-  const sample = terrain.sampleBestSurface(position.x, position.z);
-  return { position, surfaceId: sample?.surfaceId ?? terrain.defaultSurfaceId };
-}
-
 function applyPlacementRotation(
   root: TransformNode,
   terrain: TerrainWorld,
-  resolved: ResolvedAnchor,
+  resolved: ResolvedPlacementAnchor,
   visualRotationY: number,
   foundation: FoundationMode | undefined,
   category: AssetDefinition["category"],
